@@ -23,13 +23,19 @@ interface ResponseFields {
   content: boolean;
 }
 
+interface ApiRequestOptions {
+  scope: "full" | "main";
+  format: ContentFormat;
+  data?: DataRequest;
+  store?: {
+    ttl?: string | number;
+    client?: string;
+  };
+}
+
 interface ApiRequest {
   url: string;
-  options: {
-    scope: "full" | "main";
-    format: ContentFormat;
-  };
-  data?: DataRequest;
+  options: ApiRequestOptions;
 }
 
 interface ApiResponse {
@@ -49,13 +55,37 @@ interface ApiResult {
   response: ApiResponse;
 }
 
-interface FetchRequest {
-  url: string;
+interface FetchRequestOptions {
   scope?: "full" | "main";
   format?: ContentFormat;
-  include?: string | ResponseFields;
   data?: string | DataRequest;
-  store?: boolean | { ttl?: number; client?: string };
+  store?: boolean | { ttl?: string | number; client?: string };
+}
+
+interface FetchRequest {
+  url: string;
+  options?: FetchRequestOptions;
+  include?: string | ResponseFields;
+}
+
+interface StoreRequest {
+  url: string;
+  status?: number;
+  title?: string;
+  content?: string;
+  body?: string;
+  meta?: Record<string, unknown>;
+  data?: Record<string, unknown>;
+  options?: Record<string, unknown>;
+  ttl?: string | number;
+  client?: string;
+}
+
+interface StoreResult {
+  stored: boolean;
+  url: string;
+  timestamp: number;
+  deleteAt: number;
 }
 
 function parseIncludeFields(include?: string | ResponseFields): ResponseFields {
@@ -134,8 +164,11 @@ const server = Bun.serve({
           return jsonResponse({ error: "URL must start with http:// or https://" }, 400);
         }
 
-        const scope = body.scope || "main";
-        const format = body.format || "markdown";
+        const opts = body.options || {};
+        const scope = opts.scope || "main";
+        const format = opts.format || "markdown";
+        const dataParam = opts.data;
+        const storeParam = opts.store;
         const includeFields = parseIncludeFields(body.include);
 
         if (scope !== "full" && scope !== "main") {
@@ -148,7 +181,7 @@ const server = Bun.serve({
 
         let dataRequest: DataRequest | null = null;
         try {
-          dataRequest = parseDataParam(body.data);
+          dataRequest = parseDataParam(dataParam);
         } catch (error) {
           return jsonResponse(
             { error: error instanceof Error ? error.message : "Invalid data parameter" },
@@ -159,14 +192,15 @@ const server = Bun.serve({
         const fetcher = new WebFetcher();
         const result = await fetcher.fetch(body.url);
 
+        const apiRequestOptions: ApiRequestOptions = { scope, format };
+        if (dataRequest) {
+          apiRequestOptions.data = dataRequest;
+        }
+
         const apiRequest: ApiRequest = {
           url: body.url,
-          options: { scope, format },
+          options: apiRequestOptions,
         };
-
-        if (dataRequest) {
-          apiRequest.data = dataRequest;
-        }
 
         const apiResult: ApiResult = {
           request: apiRequest,
@@ -195,7 +229,7 @@ const server = Bun.serve({
         }
 
         // Database storage
-        if (body.store) {
+        if (storeParam) {
           try {
             await db.init();
 
@@ -204,9 +238,15 @@ const server = Bun.serve({
             const domain = domainParts.slice(-2).join(".");
 
             const timestamp = Date.now();
-            const storeOptions = typeof body.store === "object" ? body.store : {};
+            const storeOptions = typeof storeParam === "object" ? storeParam : {};
             const ttl = parseTtl(storeOptions.ttl) || DEFAULT_TTL;
             const deleteAt = timestamp + ttl * 1000;
+
+            // Add store options to request for visibility
+            apiRequest.options.store = {
+              ttl: storeOptions.ttl,
+              client: storeOptions.client,
+            };
 
             const pageData: PageData = {
               url: result.url,
@@ -237,6 +277,69 @@ const server = Bun.serve({
         }
 
         return jsonResponse(apiResult);
+      } catch (error) {
+        console.error("Error:", error);
+        return jsonResponse(
+          { error: error instanceof Error ? error.message : "Internal server error" },
+          500
+        );
+      }
+    }
+
+    // POST /store endpoint
+    if (url.pathname === "/store" && req.method === "POST") {
+      try {
+        const body = await req.json() as StoreRequest;
+
+        if (!body.url) {
+          return jsonResponse({ error: "URL is required" }, 400);
+        }
+
+        if (!body.url.startsWith("http://") && !body.url.startsWith("https://")) {
+          return jsonResponse({ error: "URL must start with http:// or https://" }, 400);
+        }
+
+        // At least one of body, content, or data is required
+        if (!body.body && !body.content && !body.data) {
+          return jsonResponse({ error: "At least one of body, content, or data is required" }, 400);
+        }
+
+        await db.init();
+
+        const urlObj = new URL(body.url);
+        const domainParts = urlObj.hostname.split(".");
+        const domain = domainParts.slice(-2).join(".");
+
+        const timestamp = Date.now();
+        const ttl = parseTtl(body.ttl) || DEFAULT_TTL;
+        const deleteAt = timestamp + ttl * 1000;
+
+        const pageData: PageData = {
+          url: body.url,
+          domain,
+          hostname: urlObj.hostname,
+          path: urlObj.pathname,
+          client: body.client || null,
+          title: body.title || null,
+          status: body.status || 200,
+          content: body.content || body.body || null,
+          meta: body.meta || {},
+          data: body.data || {},
+          options: body.options || {},
+          timestamp,
+          deleteAt,
+        };
+
+        await db.storePage(pageData);
+
+        const result: StoreResult = {
+          stored: true,
+          url: body.url,
+          timestamp,
+          deleteAt,
+        };
+
+        return jsonResponse(result);
       } catch (error) {
         console.error("Error:", error);
         return jsonResponse(
@@ -286,14 +389,15 @@ const server = Bun.serve({
         const fetcher = new WebFetcher();
         const result = await fetcher.fetch(targetUrl);
 
+        const apiRequestOptions: ApiRequestOptions = { scope, format };
+        if (dataRequest) {
+          apiRequestOptions.data = dataRequest;
+        }
+
         const apiRequest: ApiRequest = {
           url: targetUrl,
-          options: { scope, format },
+          options: apiRequestOptions,
         };
-
-        if (dataRequest) {
-          apiRequest.data = dataRequest;
-        }
 
         const apiResult: ApiResult = {
           request: apiRequest,
@@ -347,12 +451,19 @@ const server = Bun.serve({
               ttl = parseTtl(storeParam) || ttl;
             }
 
+            // Add store options to request for visibility
+            client = client || url.searchParams.get("client") || null;
+            apiRequest.options.store = {
+              ttl: storeParam.startsWith("{") ? undefined : storeParam,
+              client: client || undefined,
+            };
+
             const pageData: PageData = {
               url: result.url,
               domain: domain,
               hostname: urlObj.hostname,
               path: urlObj.pathname,
-              client: client || url.searchParams.get("client") || null,
+              client: client,
               title: apiResult.response.meta?.title || null,
               status: result.status,
               content: apiResult.response.content || null,

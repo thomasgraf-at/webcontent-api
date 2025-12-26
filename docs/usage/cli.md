@@ -115,6 +115,53 @@ webcontent fetch https://example.com --store --ttl 7d --client "my-app-1"
 > [!NOTE]
 > Database storage requires `TURSO_URL` and optionally `TURSO_AUTH_TOKEN` environment variables to be set.
 
+---
+
+## Store Command
+
+The `store` command allows you to store page data directly in the database without fetching.
+
+```bash
+webcontent store <url> [options]
+```
+
+### Required
+
+- `<url>`: URL for the record (must start with http:// or https://)
+- At least one of: `--body`, `--content`, or `--data`
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--status` | HTTP status code | `200` |
+| `--title` | Page title | none |
+| `--content` | Extracted content | none |
+| `--body` | Raw HTML body | none |
+| `--meta` | Page metadata as JSON | `{}` |
+| `--data` | Plugin data as JSON | `{}` |
+| `--options` | Request options as JSON | `{}` |
+| `--ttl` | TTL for stored record (duration format) | `30d` |
+| `--client` | Client/shard identifier | none |
+
+### Examples
+
+```bash
+# Store simple content
+webcontent store https://example.com --content "Page content here"
+
+# Store with title and body
+webcontent store https://example.com --body "<html>...</html>" --title "Example Page"
+
+# Store structured data
+webcontent store https://example.com --data '{"headings":[{"level":1,"text":"Title"}]}'
+
+# Store with TTL and client
+webcontent store https://example.com --content "Content" --ttl 7d --client "my-app"
+```
+
+---
+
 ## Output Format
 
 All output is JSON with a request/response envelope:
@@ -123,8 +170,11 @@ All output is JSON with a request/response envelope:
 {
   "request": {
     "url": "https://example.com",
-    "options": { "scope": "main", "format": "markdown" },
-    "data": { "headings": true }
+    "options": {
+      "scope": "main",
+      "format": "markdown",
+      "data": { "headings": true }
+    }
   },
   "response": {
     "timestamp": 1700000000000,

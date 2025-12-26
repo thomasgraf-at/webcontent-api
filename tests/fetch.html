@@ -209,7 +209,11 @@
   </style>
 </head>
 <body>
-  <h1>WebContent API Test</h1>
+  <div style="margin-bottom: 20px;">
+    <a href="store.html" style="color: #0066cc;">Store Test &rarr;</a>
+  </div>
+
+  <h1>WebContent Fetch Test</h1>
 
   <div class="form-group">
     <label for="server">Server:</label>
@@ -504,12 +508,19 @@
           }
           response = await fetch(`${apiBase}/fetch?${params}`);
         } else {
-          const body = { url, scope, format, include };
-          if (data) body.data = data;
+          const body = {
+            url,
+            include,
+            options: {
+              scope,
+              format
+            }
+          };
+          if (data) body.options.data = data;
           if (storeEnabled) {
-            body.store = {};
-            if (storeTtl) body.store.ttl = storeTtl;
-            if (storeClient) body.store.client = storeClient;
+            body.options.store = {};
+            if (storeTtl) body.options.store.ttl = storeTtl;
+            if (storeClient) body.options.store.client = storeClient;
           }
           response = await fetch(`${apiBase}/fetch`, {
             method: 'POST',

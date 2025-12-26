@@ -36,13 +36,19 @@ interface ResponseFields {
   content: boolean;
 }
 
+interface ApiRequestOptions {
+  scope: "full" | "main";
+  format: ContentFormat;
+  data?: DataRequest;
+  store?: {
+    ttl?: string | number;
+    client?: string;
+  };
+}
+
 interface ApiRequest {
   url: string;
-  options: {
-    scope: "full" | "main";
-    format: ContentFormat;
-  };
-  data?: DataRequest;
+  options: ApiRequestOptions;
 }
 
 interface ApiResponse {
@@ -205,17 +211,19 @@ async function executeFetch(options: FetchOptions): Promise<void> {
   try {
     const result = await fetcher.fetch(options.url);
 
-    const apiRequest: ApiRequest = {
-      url: options.url,
-      options: {
-        scope: options.scope,
-        format: options.format,
-      },
+    const apiRequestOptions: ApiRequestOptions = {
+      scope: options.scope,
+      format: options.format,
     };
 
     if (options.data) {
-      apiRequest.data = options.data;
+      apiRequestOptions.data = options.data;
     }
+
+    const apiRequest: ApiRequest = {
+      url: options.url,
+      options: apiRequestOptions,
+    };
 
     const apiResult: ApiResult = {
       request: apiRequest,
@@ -266,6 +274,12 @@ async function executeFetch(options: FetchOptions): Promise<void> {
         const timestamp = Date.now();
         const ttl = options.store.ttl || DEFAULT_TTL;
         const deleteAt = timestamp + ttl * 1000;
+
+        // Add store options to request for visibility
+        apiRequest.options.store = {
+          ttl: options.store.ttl,
+          client: options.store.client,
+        };
 
         const pageData: PageData = {
           url: result.url,

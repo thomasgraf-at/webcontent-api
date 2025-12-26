@@ -9,15 +9,16 @@ The WebContent API allows you to fetch and parse web content via HTTP `GET` and 
 Fetch content using query parameters.
 
 **Parameters**:
-| Parameter | Description | Default |
-|-----------|-------------|---------|
-| `url` | URL to fetch (required) | - |
-| `scope` | `full` or `main` | `main` |
-| `format` | `html`, `markdown`, or `text` | `markdown` |
-| `include` | Comma-separated core fields | `meta,content` |
-| `data` | Comma-separated plugin names | none |
-| `store` | Boolean or TTL duration to enable storage | `false` |
-| `client` | Client/Shard identifier for the record | none |
+
+| Parameter | Description                               | Default        |
+|-----------|-------------------------------------------|----------------|
+| `url`     | URL to fetch (required)                   | -              |
+| `scope`   | `full` or `main`                          | `main`         |
+| `format`  | `html`, `markdown`, or `text`             | `markdown`     |
+| `include` | Comma-separated core fields               | `meta,content` |
+| `data`    | Comma-separated plugin names              | none           |
+| `store`   | Boolean or TTL duration to enable storage | `false`        |
+| `client`  | Client/Shard identifier for the record    | none           |
 
 **Example**:
 ```bash
@@ -42,9 +43,11 @@ Fetch content using a JSON body. This is preferred for complex requests or when 
 ```json
 {
   "url": "https://example.com",
-  "scope": "main",
-  "format": "markdown",
-  "include": "meta,content"
+  "include": "meta,content",
+  "options": {
+    "scope": "main",
+    "format": "markdown"
+  }
 }
 ```
 
@@ -56,6 +59,10 @@ Fetch content using a JSON body. This is preferred for complex requests or when 
     "meta": true,
     "content": true,
     "headers": true
+  },
+  "options": {
+    "scope": "main",
+    "format": "markdown"
   }
 }
 ```
@@ -64,9 +71,13 @@ Fetch content using a JSON body. This is preferred for complex requests or when 
 ```json
 {
   "url": "https://example.com",
-  "data": {
-    "headings": { "minLevel": 1, "maxLevel": 3 },
-    "links": true
+  "options": {
+    "scope": "main",
+    "format": "markdown",
+    "data": {
+      "headings": { "minLevel": 1, "maxLevel": 3 },
+      "links": true
+    }
   }
 }
 ```
@@ -75,9 +86,13 @@ Fetch content using a JSON body. This is preferred for complex requests or when 
 ```json
 {
   "url": "https://example.com",
-  "store": {
-    "ttl": "7d",
-    "client": "my-client-id"
+  "options": {
+    "scope": "main",
+    "format": "markdown",
+    "store": {
+      "ttl": "7d",
+      "client": "my-client-id"
+    }
   }
 }
 ```
@@ -92,6 +107,54 @@ Fetch content using a JSON body. This is preferred for complex requests or when 
 
 ---
 
+### `POST /store`
+
+Store page data directly in the database without fetching.
+
+**Headers**:
+- `Content-Type: application/json`
+
+**Request Body**:
+```json
+{
+  "url": "https://example.com",
+  "content": "Page content here",
+  "title": "Example Page",
+  "ttl": "7d",
+  "client": "my-app"
+}
+```
+
+**Required Fields**:
+- `url`: URL for the record (must start with http:// or https://)
+- At least one of: `body`, `content`, or `data`
+
+**Optional Fields**:
+
+| Field     | Type          | Description           | Default |
+|-----------|---------------|-----------------------|---------|
+| `status`  | number        | HTTP status code      | `200`   |
+| `title`   | string        | Page title            | none    |
+| `content` | string        | Extracted content     | none    |
+| `body`    | string        | Raw HTML body         | none    |
+| `meta`    | object        | Page metadata         | `{}`    |
+| `data`    | object        | Plugin data           | `{}`    |
+| `options` | object        | Request options       | `{}`    |
+| `ttl`     | string/number | TTL duration          | `30d`   |
+| `client`  | string        | Client/shard identifier | none  |
+
+**Response**:
+```json
+{
+  "stored": true,
+  "url": "https://example.com",
+  "timestamp": 1700000000000,
+  "deleteAt": 1700604800000
+}
+```
+
+---
+
 ## Response Structure
 
 All responses use a standard envelope format:
@@ -102,10 +165,10 @@ All responses use a standard envelope format:
     "url": "https://example.com",
     "options": {
       "scope": "main",
-      "format": "markdown"
-    },
-    "data": {
-      "headings": { "minLevel": 1, "maxLevel": 3 }
+      "format": "markdown",
+      "data": {
+        "headings": { "minLevel": 1, "maxLevel": 3 }
+      }
     }
   },
   "response": {

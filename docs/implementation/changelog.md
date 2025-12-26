@@ -2,6 +2,56 @@
 
 ## 2025-12-26
 
+### API Request Structure Refactoring
+
+Restructured request format to nest `data` and `store` inside `options`:
+
+**Before:**
+```json
+{
+  "url": "...",
+  "data": { "headings": true },
+  "store": { "ttl": "7d" }
+}
+```
+
+**After:**
+```json
+{
+  "url": "...",
+  "options": {
+    "scope": "main",
+    "format": "markdown",
+    "data": { "headings": true },
+    "store": { "ttl": "7d" }
+  }
+}
+```
+
+All options must be nested inside `options`.
+
+---
+
+### Test Files Reorganized
+
+Moved test HTML files to `/tests/` directory:
+- `tests/fetch.html` - Fetch API testing
+- `tests/store.html` - Store API testing (new)
+
+---
+
+### Store Command/API
+
+Added `store` command and `/store` API endpoint for storing page data directly without fetching.
+
+- CLI: `webcontent store <url> --content "..." [options]`
+- API: `POST /store` with JSON body
+- Requires URL and at least one of: body, content, or data
+- Supports all PageData fields: status, title, meta, options
+- TTL duration format supported
+
+---
+
 ### TTL Duration Parsing
 
 Added human-readable TTL duration formats for database storage.

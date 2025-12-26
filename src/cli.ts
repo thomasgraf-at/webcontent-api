@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { fetchCommand } from "./commands";
+import { fetchCommand, storeCommand } from "./commands";
 
 const VERSION = "1.0.0";
 
@@ -13,6 +13,7 @@ Usage:
 
 Commands:
   fetch <url>    Fetch a web page (always fresh, bypasses cache)
+  store <url>    Store page data directly in database
 
 Global Options:
   -h, --help     Show this help message
@@ -50,6 +51,9 @@ async function main(): Promise<void> {
   switch (command) {
     case "fetch":
       await fetchCommand(commandArgs);
+      break;
+    case "store":
+      await storeCommand(commandArgs);
       break;
     default:
       console.error(`Unknown command: ${command}`);

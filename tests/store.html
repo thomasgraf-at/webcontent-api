@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebContent Store Test</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+    }
+    .form-row {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    .form-group.flex-grow {
+      flex: 1;
+      min-width: 200px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    input[type="text"], select, textarea {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    textarea {
+      min-height: 100px;
+      font-family: monospace;
+    }
+    button {
+      background: #0066cc;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    button:hover {
+      background: #0055aa;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    button.secondary {
+      background: #666;
+    }
+    button.secondary:hover {
+      background: #555;
+    }
+    .result {
+      margin-top: 20px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 15px;
+    }
+    pre {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    .meta-table th, .meta-table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    .meta-table th {
+      background: #f0f0f0;
+      width: 150px;
+    }
+    .success-banner {
+      background: #e6ffe6;
+      border: 1px solid #99cc99;
+      color: #006600;
+      padding: 10px 15px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+    }
+    .error {
+      color: #cc0000;
+      background: #ffe6e6;
+      padding: 15px;
+      border-radius: 4px;
+      border: 1px solid #ffcccc;
+    }
+    .error h3 {
+      margin-top: 0;
+      color: #aa0000;
+    }
+    .nav-link {
+      margin-bottom: 20px;
+    }
+    .nav-link a {
+      color: #0066cc;
+    }
+  </style>
+</head>
+<body>
+  <div class="nav-link">
+    <a href="test.html">&larr; Back to Fetch Test</a>
+  </div>
+
+  <h1>WebContent Store Test</h1>
+  <p style="color: #666; margin-bottom: 20px;">Store page data directly without fetching. Requires URL and at least one of: content, body, or data.</p>
+
+  <div class="form-group">
+    <label for="server">Server:</label>
+    <select id="server">
+      <option value="http://localhost:233">Local (http://localhost:233)</option>
+      <option value="https://webcontent-683135941939.europe-west1.run.app">Cloud Run (europe-west1)</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label for="storeUrl">URL:</label>
+    <input type="text" id="storeUrl" value="https://example.com/custom" placeholder="https://example.com/page">
+  </div>
+
+  <div class="form-row">
+    <div class="form-group flex-grow">
+      <label for="storeTitle">Title:</label>
+      <input type="text" id="storeTitle" placeholder="Page Title">
+    </div>
+    <div class="form-group flex-grow">
+      <label for="storeStatus">Status:</label>
+      <input type="text" id="storeStatus" value="200" placeholder="200">
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label for="storeContent">Content:</label>
+    <textarea id="storeContent" placeholder="Extracted content text..."></textarea>
+  </div>
+
+  <div class="form-group">
+    <label for="storeBody">Body (HTML):</label>
+    <textarea id="storeBody" placeholder="<html>...</html>"></textarea>
+  </div>
+
+  <div class="form-group">
+    <label for="storeMeta">Meta (JSON):</label>
+    <input type="text" id="storeMeta" placeholder='{"title":"Page Title","description":"..."}'>
+  </div>
+
+  <div class="form-group">
+    <label for="storeData">Data (JSON):</label>
+    <input type="text" id="storeData" placeholder='{"headings":[{"level":1,"text":"Title"}]}'>
+  </div>
+
+  <div class="form-row">
+    <div class="form-group flex-grow">
+      <label for="storeTtl">TTL:</label>
+      <input type="text" id="storeTtl" placeholder="7d, 6h, 3600">
+    </div>
+    <div class="form-group flex-grow">
+      <label for="storeClient">Client ID:</label>
+      <input type="text" id="storeClient" placeholder="my-client-id">
+    </div>
+  </div>
+
+  <button id="storeBtn" onclick="storeContent()">Store</button>
+  <button class="secondary" onclick="checkHealth()">Health Check</button>
+
+  <div id="result" class="result" style="display: none;"></div>
+
+  <script>
+    function getApiBase() {
+      return document.getElementById('server').value;
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function storeContent() {
+      const url = document.getElementById('storeUrl').value;
+      const title = document.getElementById('storeTitle').value;
+      const status = document.getElementById('storeStatus').value;
+      const content = document.getElementById('storeContent').value;
+      const body = document.getElementById('storeBody').value;
+      const metaStr = document.getElementById('storeMeta').value;
+      const dataStr = document.getElementById('storeData').value;
+      const ttl = document.getElementById('storeTtl').value;
+      const client = document.getElementById('storeClient').value;
+
+      if (!url) {
+        alert('URL is required');
+        return;
+      }
+
+      if (!content && !body && !dataStr) {
+        alert('At least one of content, body, or data is required');
+        return;
+      }
+
+      const btn = document.getElementById('storeBtn');
+      btn.disabled = true;
+      btn.textContent = 'Storing...';
+
+      try {
+        const reqBody = { url };
+        if (title) reqBody.title = title;
+        if (status) reqBody.status = parseInt(status, 10);
+        if (content) reqBody.content = content;
+        if (body) reqBody.body = body;
+        if (metaStr) {
+          try {
+            reqBody.meta = JSON.parse(metaStr);
+          } catch (e) {
+            alert('Invalid JSON in Meta field');
+            btn.disabled = false;
+            btn.textContent = 'Store';
+            return;
+          }
+        }
+        if (dataStr) {
+          try {
+            reqBody.data = JSON.parse(dataStr);
+          } catch (e) {
+            alert('Invalid JSON in Data field');
+            btn.disabled = false;
+            btn.textContent = 'Store';
+            return;
+          }
+        }
+        if (ttl) reqBody.ttl = ttl;
+        if (client) reqBody.client = client;
+
+        const apiBase = getApiBase();
+        const response = await fetch(`${apiBase}/store`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(reqBody)
+        });
+
+        const result = await response.json();
+
+        if (result.error) {
+          showError(result.error, result);
+        } else {
+          showResult(result);
+        }
+      } catch (error) {
+        showError(error.message, {
+          type: error.name,
+          message: error.message,
+          hint: 'Make sure the server is running and database is configured'
+        });
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Store';
+      }
+    }
+
+    function showResult(result) {
+      const resultDiv = document.getElementById('result');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = `
+        <div class="success-banner">
+          Stored successfully: <strong>${escapeHtml(result.url)}</strong>
+        </div>
+        <table class="meta-table">
+          <tr><th>Stored</th><td>${result.stored ? 'Yes' : 'No'}</td></tr>
+          <tr><th>URL</th><td>${escapeHtml(result.url)}</td></tr>
+          <tr><th>Timestamp</th><td>${new Date(result.timestamp).toISOString()}</td></tr>
+          <tr><th>Delete At</th><td>${new Date(result.deleteAt).toISOString()}</td></tr>
+          <tr><th>TTL</th><td>${Math.round((result.deleteAt - result.timestamp) / 1000 / 60 / 60 / 24)} days</td></tr>
+        </table>
+        <h4>Raw Response</h4>
+        <pre>${escapeHtml(JSON.stringify(result, null, 2))}</pre>
+      `;
+    }
+
+    function showError(error, details) {
+      const resultDiv = document.getElementById('result');
+      resultDiv.style.display = 'block';
+      resultDiv.innerHTML = `
+        <div class="error">
+          <h3>Error</h3>
+          <p><strong>${escapeHtml(String(error))}</strong></p>
+          ${details ? `<pre>${escapeHtml(JSON.stringify(details, null, 2))}</pre>` : ''}
+        </div>
+      `;
+    }
+
+    async function checkHealth() {
+      const apiBase = getApiBase();
+      try {
+        const response = await fetch(`${apiBase}/health`);
+        const data = await response.json();
+        alert(`Health check: ${JSON.stringify(data)}\n\nServer: ${apiBase}`);
+      } catch (error) {
+        alert(`Health check failed!\n\nServer: ${apiBase}\nError: ${error.message}\n\nMake sure the server is running.`);
+      }
+    }
+  </script>
+</body>
+</html>
