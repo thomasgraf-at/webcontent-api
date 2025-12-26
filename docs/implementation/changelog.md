@@ -31,6 +31,28 @@ Added unique identifiers for stored pages using nanoid.
 
 ---
 
+### Request Logging
+
+Added request logging for both CLI and server.
+
+**CLI Logging**:
+- Logs to file: `./logs/requests.log` (gitignored)
+- Plain text format (no colors)
+
+**Server Logging**:
+- Logs to console with colors
+- Status codes: green (2xx), yellow (3xx), red (4xx-5xx)
+- Arrow icon (`➤`) prefix
+
+**Log Format**:
+```
+14:32:05 | POST /fetch | https://example.com | id:abc123 | 200
+```
+
+**Fields logged**: timestamp (HH:MM:SS), command, url, id, status, count
+
+---
+
 ## 2025-12-26
 
 ### API Request Structure Refactoring

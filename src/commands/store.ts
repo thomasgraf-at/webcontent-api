@@ -1,6 +1,6 @@
 import { parseArgs } from "util";
 import { DatabaseService, type PageData } from "../services";
-import { parseTtl, DEFAULT_TTL } from "../utils";
+import { parseTtl, DEFAULT_TTL, logRequest } from "../utils";
 
 interface StoreInput {
   url: string;
@@ -172,6 +172,15 @@ async function executeStore(input: StoreInput): Promise<void> {
       timestamp,
       deleteAt,
     };
+
+    // Log the request
+    logRequest({
+      timestamp,
+      command: "store",
+      url: input.url,
+      id: storedPage.id,
+      status: pageData.status,
+    });
 
     console.log(JSON.stringify(result, null, 2));
   } catch (error) {

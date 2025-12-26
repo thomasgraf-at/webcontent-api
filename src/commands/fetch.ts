@@ -13,7 +13,7 @@ import {
   type DataResponse,
 } from "../plugins";
 import { DatabaseService, type PageData } from "../services";
-import { parseTtl, DEFAULT_TTL } from "../utils";
+import { parseTtl, DEFAULT_TTL, logRequest } from "../utils";
 
 interface FetchOptions {
   url: string;
@@ -312,6 +312,15 @@ async function executeFetch(options: FetchOptions): Promise<void> {
         // Don't exit here, still output the fetch result
       }
     }
+
+    // Log the request
+    logRequest({
+      timestamp: apiResult.response.timestamp,
+      command: "fetch",
+      url: result.url,
+      id: apiResult.response.id,
+      status: result.status,
+    });
 
     const outputText = JSON.stringify(apiResult, null, 2);
 

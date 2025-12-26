@@ -4,4 +4,5 @@
 /.kiro/
 /node_modules/
 /dist/
+/logs/
 /bun.lock

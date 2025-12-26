@@ -1,5 +1,6 @@
 import { parseArgs } from "util";
 import { DatabaseService, type StoredPage } from "../services";
+import { logRequest } from "../utils";
 
 interface GetOptions {
   id: string;
@@ -118,6 +119,15 @@ async function executeGet(options: GetOptions): Promise<void> {
       response: storedPageToResponse(page),
     };
 
+    // Log the request
+    logRequest({
+      timestamp: Date.now(),
+      command: "get",
+      url: page.url,
+      id: page.id,
+      status: page.status,
+    });
+
     const outputText = JSON.stringify(response, null, 2);
 
     if (options.output) {
@@ -209,6 +219,14 @@ async function executeGets(options: GetsOptions): Promise<void> {
         options: page.options,
       })),
     };
+
+    // Log the request
+    logRequest({
+      timestamp: Date.now(),
+      command: "gets",
+      ids: options.ids,
+      count: pages.length,
+    });
 
     const outputText = JSON.stringify(response, null, 2);
 

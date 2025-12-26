@@ -13,7 +13,7 @@ import {
   type DataResponse,
 } from "../plugins";
 import { DatabaseService, type PageData } from "../services";
-import { parseTtl, DEFAULT_TTL } from "../utils";
+import { parseTtl, DEFAULT_TTL, logServerRequest } from "../utils";
 
 const PORT = parseInt(process.env.PORT || "233");
 
@@ -230,6 +230,14 @@ const server = Bun.serve({
           response: storedPageToResponse(page),
         };
 
+        logServerRequest({
+          timestamp: Date.now(),
+          command: "GET /pages/:id",
+          url: page.url,
+          id: page.id,
+          status: page.status,
+        });
+
         return jsonResponse(response);
       } catch (error) {
         console.error("Error:", error);
@@ -260,6 +268,14 @@ const server = Bun.serve({
           request: { id: body.id },
           response: storedPageToResponse(page),
         };
+
+        logServerRequest({
+          timestamp: Date.now(),
+          command: "POST /get",
+          url: page.url,
+          id: page.id,
+          status: page.status,
+        });
 
         return jsonResponse(response);
       } catch (error) {
@@ -307,6 +323,13 @@ const server = Bun.serve({
             options: page.options,
           })),
         };
+
+        logServerRequest({
+          timestamp: Date.now(),
+          command: "POST /gets",
+          ids: body.ids,
+          count: pages.length,
+        });
 
         return jsonResponse(response);
       } catch (error) {
@@ -444,6 +467,14 @@ const server = Bun.serve({
           }
         }
 
+        logServerRequest({
+          timestamp: apiResult.response.timestamp,
+          command: "POST /fetch",
+          url: result.url,
+          id: apiResult.response.id,
+          status: result.status,
+        });
+
         return jsonResponse(apiResult);
       } catch (error) {
         console.error("Error:", error);
@@ -507,6 +538,14 @@ const server = Bun.serve({
           timestamp,
           deleteAt,
         };
+
+        logServerRequest({
+          timestamp,
+          command: "POST /store",
+          url: body.url,
+          id: storedPage.id,
+          status: pageData.status,
+        });
 
         return jsonResponse(result);
       } catch (error) {
@@ -655,6 +694,14 @@ const server = Bun.serve({
             );
           }
         }
+
+        logServerRequest({
+          timestamp: apiResult.response.timestamp,
+          command: "GET /fetch",
+          url: result.url,
+          id: apiResult.response.id,
+          status: result.status,
+        });
 
         return jsonResponse(apiResult);
       } catch (error) {
