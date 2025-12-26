@@ -1,29 +1,40 @@
-# Data Plugins Roadmap
+# Data Plugins
 
-This document outlines the data plugin system and planned plugins for WebContent.
+Data plugins extend WebContent's extraction capabilities beyond the core `meta` and `content` fields.
 
 ## Overview
 
-Data plugins extend WebContent's extraction capabilities beyond the core `meta` and `content` fields. They are requested via the `data` parameter and output structured data under `response.data`.
+Plugins are requested via `options.data` and output to `response.data`.
 
-## Plugin Categories
+```json
+{
+  "options": {
+    "data": {
+      "headings": { "minLevel": 1, "maxLevel": 3 },
+      "links": true
+    }
+  }
+}
+```
 
-### 1. Structure Extraction
-Plugins that extract structural elements from HTML.
-
-### 2. Content Analysis
-Plugins that analyze and derive insights from content.
-
-### 3. External Integration
-Plugins that integrate with external services (AI, APIs).
+```json
+{
+  "response": {
+    "data": {
+      "headings": [...],
+      "links": {...}
+    }
+  }
+}
+```
 
 ---
 
-## Built-in Plugins
+## Available Plugins
 
-### `headings` - Heading Extraction
+### `headings`
 
-**Status**: Available
+**Status**: Implemented
 
 Extract all headings from the page with their hierarchy.
 
@@ -37,33 +48,16 @@ Extract all headings from the page with their hierarchy.
 ```typescript
 interface Heading {
   level: number;  // 1-6
-  text: string;   // Text content
+  text: string;
 }
 // Returns: Heading[]
 ```
 
-**Example**:
-```json
-{
-  "data": { "headings": { "minLevel": 1, "maxLevel": 3 } }
-}
-// Output:
-{
-  "data": {
-    "headings": [
-      { "level": 1, "text": "Main Title" },
-      { "level": 2, "text": "Introduction" },
-      { "level": 2, "text": "Features" }
-    ]
-  }
-}
-```
-
 ---
 
-### `links` - Link Extraction
+## Planned Plugins
 
-**Status**: Planned
+### `links`
 
 Extract all links from the page, categorized by type.
 
@@ -89,9 +83,7 @@ interface Link {
 
 ---
 
-### `images` - Image Extraction
-
-**Status**: Planned
+### `images`
 
 Extract all images from the page.
 
@@ -114,33 +106,7 @@ interface Image {
 
 ---
 
-### `words` - Word Analysis
-
-**Status**: Planned
-
-Analyze word frequency and content statistics.
-
-**Options**:
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `limit` | number | 100 | Max words to return |
-| `minLength` | number | 3 | Minimum word length |
-| `stopwords` | boolean | true | Filter common stopwords |
-
-**Output**:
-```typescript
-interface WordAnalysis {
-  total: number;
-  unique: number;
-  frequency: { word: string; count: number }[];
-}
-```
-
----
-
-### `tables` - Table Extraction
-
-**Status**: Planned
+### `tables`
 
 Extract HTML tables as structured data.
 
@@ -161,42 +127,7 @@ interface Table {
 
 ---
 
-## Advanced Plugins
-
-### `seo` - SEO Analysis
-
-**Status**: Planned
-
-Comprehensive SEO analysis of the page.
-
-**Output**:
-```typescript
-interface SeoAnalysis {
-  score: number;
-  issues: SeoIssue[];
-  suggestions: string[];
-}
-interface SeoIssue {
-  type: "error" | "warning" | "info";
-  message: string;
-  element?: string;
-}
-```
-
-**Checks**:
-- Title length and presence
-- Meta description length
-- Heading hierarchy (single H1, logical order)
-- Image alt text coverage
-- Internal/external link ratio
-- Mobile viewport meta
-- Canonical URL presence
-
----
-
-### `schema` - Structured Data Extraction
-
-**Status**: Planned
+### `schema`
 
 Extract JSON-LD and microdata from the page.
 
@@ -210,9 +141,7 @@ interface SchemaData {
 
 ---
 
-### `feeds` - Feed Detection
-
-**Status**: Planned
+### `feeds`
 
 Detect RSS/Atom feeds linked from the page.
 
@@ -228,93 +157,77 @@ interface Feed {
 
 ---
 
+## Analysis Plugins
+
+### `words`
+
+Word frequency and content statistics.
+
+**Options**:
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `limit` | number | 100 | Max words to return |
+| `minLength` | number | 3 | Minimum word length |
+| `stopwords` | boolean | true | Filter common stopwords |
+
+**Output**:
+```typescript
+interface WordAnalysis {
+  total: number;
+  unique: number;
+  frequency: { word: string; count: number }[];
+}
+```
+
+---
+
+### `seo`
+
+SEO analysis of the page.
+
+**Output**:
+```typescript
+interface SeoAnalysis {
+  score: number;
+  issues: SeoIssue[];
+  suggestions: string[];
+}
+```
+
+**Checks**:
+- Title length and presence
+- Meta description
+- Heading hierarchy
+- Image alt text
+- Internal/external link ratio
+
+---
+
 ## External Integration Plugins
 
-These plugins require external services or API keys.
+These require external services or API keys.
 
-### `summary` - AI Summary
+### `summary`
 
-**Status**: Planned
-
-Generate an AI-powered summary of the content.
+AI-powered content summary.
 
 **Options**:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `model` | string | "haiku" | AI model to use |
-| `maxLength` | number | 200 | Maximum summary length |
-| `style` | string | "neutral" | Summary style |
-
-**Output**:
-```typescript
-interface Summary {
-  text: string;
-  model: string;
-}
-```
+| `model` | string | "haiku" | AI model |
+| `maxLength` | number | 200 | Max summary length |
 
 ---
 
-### `entities` - Entity Extraction
+### `entities`
 
-**Status**: Planned
-
-Extract named entities (people, companies, locations) using NLP.
-
-**Options**:
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `types` | string[] | ["person", "org", "location"] | Entity types |
-
-**Output**:
-```typescript
-interface Entity {
-  type: string;
-  text: string;
-  count: number;
-}
-// Returns: Entity[]
-```
+Named entity extraction (people, companies, locations).
 
 ---
 
-### `sentiment` - Sentiment Analysis
+### `sentiment`
 
-**Status**: Planned
-
-Analyze the sentiment of the content.
-
-**Output**:
-```typescript
-interface Sentiment {
-  score: number;      // -1 to 1
-  label: "negative" | "neutral" | "positive";
-  confidence: number;
-}
-```
-
----
-
-### `translate` - Translation
-
-**Status**: Planned
-
-Translate content to a target language.
-
-**Options**:
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `target` | string | required | Target language code |
-| `source` | string | "auto" | Source language |
-
-**Output**:
-```typescript
-interface Translation {
-  text: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-}
-```
+Sentiment analysis of the content.
 
 ---
 
@@ -332,9 +245,9 @@ interface DataPlugin<TOptions = unknown, TOutput = unknown> {
 
 ### Guidelines
 
-1. **Pure functions**: Plugins should not have side effects
-2. **Error handling**: Throw descriptive errors for invalid options
-3. **Performance**: Avoid parsing HTML multiple times if possible
+1. **Pure functions**: No side effects
+2. **Error handling**: Throw descriptive errors
+3. **Performance**: Avoid parsing HTML multiple times
 4. **Documentation**: Include options table and output type
 
 ### Registration
@@ -345,17 +258,17 @@ Add to `src/plugins/index.ts`:
 import { myPlugin } from "./my-plugin";
 
 export const plugins = {
-  // ... existing
+  // existing...
   myPlugin,
 };
 ```
 
 ---
 
-## Priority Roadmap
+## Roadmap
 
-1. **Phase 1** (Current): `headings`
+1. **Phase 1** (Done): `headings`
 2. **Phase 2**: `links`, `images`
-3. **Phase 3**: `words`, `tables`, `seo`
-4. **Phase 4**: `schema`, `feeds`
-5. **Phase 5**: External integrations (`summary`, `entities`)
+3. **Phase 3**: `tables`, `schema`, `feeds`
+4. **Phase 4**: `words`, `seo`
+5. **Phase 5**: External integrations
