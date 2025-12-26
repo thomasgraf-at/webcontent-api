@@ -18,8 +18,17 @@
     h1 {
       color: #333;
     }
+    .form-row {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+    }
     .form-group {
       margin-bottom: 15px;
+    }
+    .form-group.flex-grow {
+      flex: 1;
+      min-width: 200px;
     }
     label {
       display: block;
@@ -32,6 +41,18 @@
       border: 1px solid #ddd;
       border-radius: 4px;
       font-size: 14px;
+    }
+    .checkbox-group {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      margin-top: 5px;
+    }
+    .checkbox-group label {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-weight: normal;
     }
     button {
       background: #0066cc;
@@ -49,6 +70,12 @@
     button:disabled {
       background: #ccc;
       cursor: not-allowed;
+    }
+    button.secondary {
+      background: #666;
+    }
+    button.secondary:hover {
+      background: #555;
     }
     .result {
       margin-top: 20px;
@@ -169,6 +196,16 @@
       background: #ffe6e6;
       color: #cc0000;
     }
+    .data-section {
+      margin-top: 15px;
+      padding: 10px;
+      background: #f9f9f9;
+      border-radius: 4px;
+    }
+    .data-section h4 {
+      margin: 0 0 10px 0;
+      color: #555;
+    }
   </style>
 </head>
 <body>
@@ -179,26 +216,47 @@
     <input type="text" id="url" value="https://example.com" placeholder="https://example.com">
   </div>
 
-  <div class="form-group">
-    <label for="contentType">Content type:</label>
-    <select id="contentType">
-      <option value="main" selected>main (extract main content)</option>
-      <option value="full">full (entire page body)</option>
-    </select>
+  <div class="form-row">
+    <div class="form-group flex-grow">
+      <label for="scope">Scope:</label>
+      <select id="scope">
+        <option value="main" selected>main (extract main content)</option>
+        <option value="full">full (entire page body)</option>
+      </select>
+    </div>
+
+    <div class="form-group flex-grow">
+      <label for="format">Format:</label>
+      <select id="format">
+        <option value="markdown" selected>Markdown</option>
+        <option value="html">HTML</option>
+        <option value="text">Plain Text</option>
+      </select>
+    </div>
   </div>
 
   <div class="form-group">
-    <label for="format">Format:</label>
-    <select id="format">
-      <option value="html">HTML</option>
-      <option value="markdown">Markdown</option>
-      <option value="text">Plain Text</option>
-    </select>
+    <label>Include Fields:</label>
+    <div class="checkbox-group">
+      <label><input type="checkbox" id="includeMeta" checked> meta</label>
+      <label><input type="checkbox" id="includeContent" checked> content</label>
+      <label><input type="checkbox" id="includeHeaders"> headers</label>
+      <label><input type="checkbox" id="includeBody"> body</label>
+    </div>
   </div>
 
-  <button id="fetchBtn" onclick="fetchContent()">Fetch (GET)</button>
-  <button id="fetchPostBtn" onclick="fetchContentPost()">Fetch (POST)</button>
-  <button onclick="checkHealth()">Health Check</button>
+  <div class="form-group">
+    <label>Data Plugins:</label>
+    <div class="checkbox-group">
+      <label><input type="checkbox" id="dataHeadings"> headings</label>
+      <label><input type="checkbox" id="dataLinks" disabled title="Coming soon"> links (planned)</label>
+      <label><input type="checkbox" id="dataImages" disabled title="Coming soon"> images (planned)</label>
+    </div>
+  </div>
+
+  <button id="fetchBtn" onclick="fetchContent('GET')">Fetch (GET)</button>
+  <button id="fetchPostBtn" onclick="fetchContent('POST')">Fetch (POST)</button>
+  <button class="secondary" onclick="checkHealth()">Health Check</button>
 
   <div id="result" class="result" style="display: none;">
     <div id="resultBanner"></div>
@@ -206,12 +264,14 @@
       <button class="tab" data-tab="content">Content</button>
       <button class="tab" data-tab="overview">Overview</button>
       <button class="tab" data-tab="meta">Metadata</button>
+      <button class="tab" data-tab="data">Data Plugins</button>
       <button class="tab" data-tab="raw">Raw JSON</button>
     </div>
 
     <div id="content" class="tab-content"></div>
     <div id="overview" class="tab-content"></div>
     <div id="meta" class="tab-content"></div>
+    <div id="data" class="tab-content"></div>
     <div id="raw" class="tab-content"></div>
   </div>
 
@@ -236,42 +296,70 @@
       document.getElementById(tabName).classList.add('active');
     }
 
-    function showResult(data) {
+    function getIncludeFields() {
+      const fields = [];
+      if (document.getElementById('includeMeta').checked) fields.push('meta');
+      if (document.getElementById('includeContent').checked) fields.push('content');
+      if (document.getElementById('includeHeaders').checked) fields.push('headers');
+      if (document.getElementById('includeBody').checked) fields.push('body');
+      return fields.join(',');
+    }
+
+    function getDataPlugins() {
+      const plugins = [];
+      if (document.getElementById('dataHeadings').checked) plugins.push('headings');
+      return plugins.length > 0 ? plugins.join(',') : null;
+    }
+
+    function showResult(apiResult) {
       const resultDiv = document.getElementById('result');
       resultDiv.style.display = 'block';
 
+      const response = apiResult.response;
+      const request = apiResult.request;
+
       // Success banner
-      const statusClass = data.statusCode >= 200 && data.statusCode < 400 ? 'success' : 'error';
+      const statusClass = response.status >= 200 && response.status < 400 ? 'success' : 'error';
       document.getElementById('resultBanner').innerHTML = `
         <div class="success-banner">
-          Fetched successfully: <strong>${data.url}</strong>
-          <span class="status-code ${statusClass}">${data.statusCode}</span>
+          Fetched successfully: <strong>${response.url}</strong>
+          <span class="status-code ${statusClass}">${response.status}</span>
+          ${response.redirect ? `<br>Redirects to: ${response.redirect}` : ''}
         </div>
       `;
 
-      // Content tab (show first)
-      const format = document.getElementById('format').value;
+      // Content tab
+      const format = request.options.format;
       document.getElementById('content').innerHTML = `
         <h3>Content (${format})</h3>
-        <div class="content-preview">${escapeHtml(data.content || '(no content)')}</div>
+        <div class="content-preview">${escapeHtml(response.content || '(not included or empty)')}</div>
       `;
 
       // Overview
       document.getElementById('overview').innerHTML = `
         <h3>Fetch Result</h3>
         <table class="meta-table">
-          <tr><th>URL</th><td>${data.url}</td></tr>
-          <tr><th>Status Code</th><td><span class="status-code ${statusClass}">${data.statusCode}</span></td></tr>
-          <tr><th>Redirect</th><td>${data.redirect || 'None'}</td></tr>
-          <tr><th>Timestamp</th><td>${data.timestamp}</td></tr>
-          <tr><th>Title</th><td>${data.meta?.title || 'N/A'}</td></tr>
-          <tr><th>Content Length</th><td>${(data.content || '').length.toLocaleString()} characters</td></tr>
+          <tr><th>Request URL</th><td>${request.url}</td></tr>
+          <tr><th>Response URL</th><td>${response.url}</td></tr>
+          <tr><th>Status</th><td><span class="status-code ${statusClass}">${response.status}</span></td></tr>
+          <tr><th>Redirect</th><td>${response.redirect || 'None'}</td></tr>
+          <tr><th>Timestamp</th><td>${new Date(response.timestamp).toISOString()}</td></tr>
+          <tr><th>Scope</th><td>${request.options.scope}</td></tr>
+          <tr><th>Format</th><td>${request.options.format}</td></tr>
+          <tr><th>Title</th><td>${response.meta?.title || 'N/A'}</td></tr>
+          <tr><th>Content Length</th><td>${(response.content || '').length.toLocaleString()} characters</td></tr>
         </table>
+        ${response.headers ? `
+          <h4>Response Headers</h4>
+          <table class="meta-table">
+            ${Object.entries(response.headers).map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join('')}
+          </table>
+        ` : ''}
       `;
 
       // Metadata
-      const meta = data.meta || {};
-      document.getElementById('meta').innerHTML = `
+      const meta = response.meta || {};
+      document.getElementById('meta').innerHTML = response.meta ? `
         <h3>Page Metadata</h3>
         <table class="meta-table">
           <tr><th>Title</th><td>${meta.title || 'N/A'}</td></tr>
@@ -297,12 +385,28 @@
             ${meta.hreflang.map(h => `<tr><td>${h.lang}</td><td>${h.url}</td></tr>`).join('')}
           </table>
         ` : ''}
-      `;
+      ` : '<p>Metadata not included in response.</p>';
+
+      // Data plugins
+      if (response.data && Object.keys(response.data).length > 0) {
+        let dataHtml = '<h3>Data Plugin Results</h3>';
+        for (const [plugin, data] of Object.entries(response.data)) {
+          dataHtml += `
+            <div class="data-section">
+              <h4>${escapeHtml(plugin)}</h4>
+              <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+            </div>
+          `;
+        }
+        document.getElementById('data').innerHTML = dataHtml;
+      } else {
+        document.getElementById('data').innerHTML = '<p>No data plugins requested or no data returned.</p>';
+      }
 
       // Raw JSON
       document.getElementById('raw').innerHTML = `
         <h3>Raw Response</h3>
-        <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+        <pre>${escapeHtml(JSON.stringify(apiResult, null, 2))}</pre>
       `;
 
       // Show content tab by default
@@ -329,6 +433,7 @@
       document.getElementById('content').innerHTML = errorContent;
       document.getElementById('overview').innerHTML = errorContent;
       document.getElementById('meta').innerHTML = '';
+      document.getElementById('data').innerHTML = '';
       document.getElementById('raw').innerHTML = details ? `<pre>${escapeHtml(typeof details === 'object' ? JSON.stringify(details, null, 2) : String(details))}</pre>` : '';
 
       showTab('content');
@@ -340,29 +445,44 @@
       return div.innerHTML;
     }
 
-    async function fetchContent() {
+    async function fetchContent(method) {
       const url = document.getElementById('url').value;
-      const contentType = document.getElementById('contentType').value;
+      const scope = document.getElementById('scope').value;
       const format = document.getElementById('format').value;
+      const include = getIncludeFields();
+      const data = getDataPlugins();
 
-      const btn = document.getElementById('fetchBtn');
+      const btn = document.getElementById(method === 'GET' ? 'fetchBtn' : 'fetchPostBtn');
       btn.disabled = true;
       btn.textContent = 'Fetching...';
 
       try {
-        const params = new URLSearchParams({ url, content: contentType, format });
+        let response;
 
-        const response = await fetch(`${API_BASE}/fetch?${params}`);
-        const data = await response.json();
+        if (method === 'GET') {
+          const params = new URLSearchParams({ url, scope, format, include });
+          if (data) params.set('data', data);
+          response = await fetch(`${API_BASE}/fetch?${params}`);
+        } else {
+          const body = { url, scope, format, include };
+          if (data) body.data = data;
+          response = await fetch(`${API_BASE}/fetch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+        }
 
-        if (data.error) {
-          showError(data.error, {
+        const result = await response.json();
+
+        if (result.error) {
+          showError(result.error, {
             status: response.status,
             statusText: response.statusText,
-            response: data
+            response: result
           });
         } else {
-          showResult(data);
+          showResult(result);
         }
       } catch (error) {
         showError(error.message, {
@@ -373,46 +493,7 @@
         });
       } finally {
         btn.disabled = false;
-        btn.textContent = 'Fetch (GET)';
-      }
-    }
-
-    async function fetchContentPost() {
-      const url = document.getElementById('url').value;
-      const contentType = document.getElementById('contentType').value;
-      const format = document.getElementById('format').value;
-
-      const btn = document.getElementById('fetchPostBtn');
-      btn.disabled = true;
-      btn.textContent = 'Fetching...';
-
-      try {
-        const response = await fetch(`${API_BASE}/fetch`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url, content: contentType, format })
-        });
-        const data = await response.json();
-
-        if (data.error) {
-          showError(data.error, {
-            status: response.status,
-            statusText: response.statusText,
-            response: data
-          });
-        } else {
-          showResult(data);
-        }
-      } catch (error) {
-        showError(error.message, {
-          type: error.name,
-          message: error.message,
-          stack: error.stack,
-          hint: 'Make sure the server is running: bun run server'
-        });
-      } finally {
-        btn.disabled = false;
-        btn.textContent = 'Fetch (POST)';
+        btn.textContent = method === 'GET' ? 'Fetch (GET)' : 'Fetch (POST)';
       }
     }
 
@@ -422,7 +503,7 @@
         const data = await response.json();
         alert(`Health check: ${JSON.stringify(data)}\n\nServer is running on port 233`);
       } catch (error) {
-        alert(`Health check failed!\n\nError: ${error.message}\n\nMake sure the server is running:\ncd webcontent && bun run server`);
+        alert(`Health check failed!\n\nError: ${error.message}\n\nMake sure the server is running:\nbun run server`);
       }
     }
   </script>

@@ -1,6 +1,7 @@
-/.idea
-/.vscode
-/.claude
+/.idea/
+/.vscode/
+/.claude/
+/.kiro/
 /node_modules/
 /dist/
 /bun.lock

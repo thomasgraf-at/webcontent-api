@@ -154,20 +154,21 @@ bun run build:server
 ```
 webcontent/
 ├── docs/
-│   ├── specs.md            # Specifications
-│   └── implementation.md   # Implementation notes
+│   ├── specs/
+│   │   ├── core.md                # Component Specifications
+│   │   └── documentation-style.md # Documentation Philosophy
+│   ├── implementation/
+│   │   └── architecture.md        # Technical Design
+│   ├── planning/
+│   │   └── proposals.md           # Future Enhancements
+│   └── usage/
+│       ├── cli.md                 # CLI Usage Guide
+│       ├── server.md              # Server Usage Guide
+│       └── api.md                 # HTTP API Guide
 ├── src/
-│   ├── cli.ts              # CLI entry point
-│   ├── commands/
-│   │   ├── index.ts
-│   │   └── fetch.ts        # fetch command
-│   ├── server/
-│   │   └── index.ts        # HTTP server
-│   └── services/
-│       ├── index.ts
-│       ├── web-fetcher.ts  # HTTP fetching
-│       └── html-parser.ts  # HTML parsing & conversion
-├── test.html               # Browser-based API test page
+│   ├── cli.ts
+│   ├── ...
+├── test.html
 ├── package.json
 ├── tsconfig.json
 └── README.md

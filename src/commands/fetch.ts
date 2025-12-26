@@ -6,36 +6,112 @@ import {
   type ContentFormat,
   type PageMeta,
 } from "../services";
+import {
+  parseDataParam,
+  runPlugins,
+  type DataRequest,
+  type DataResponse,
+} from "../plugins";
 
 interface FetchOptions {
   url: string;
-  content: "full" | "main";
+  scope: "full" | "main";
   format: ContentFormat;
   output?: string;
+  include: ResponseFields;
+  data: DataRequest | null;
 }
 
-interface FetchResult {
+interface ResponseFields {
+  headers: boolean;
+  body: boolean;
+  meta: boolean;
+  content: boolean;
+}
+
+interface ApiRequest {
   url: string;
-  statusCode: number;
+  options: {
+    scope: "full" | "main";
+    format: ContentFormat;
+  };
+  data?: DataRequest;
+}
+
+interface ApiResponse {
+  timestamp: number;
+  url: string;
+  status: number;
   redirect: string | null;
-  timestamp: string;
-  meta: PageMeta;
-  content: string;
+  headers?: Record<string, string>;
+  body?: string;
+  meta?: PageMeta;
+  content?: string;
+  data?: DataResponse;
+}
+
+interface ApiResult {
+  request: ApiRequest;
+  response: ApiResponse;
+}
+
+function parseIncludeFields(include?: string): ResponseFields {
+  // Default: meta and content
+  const defaults: ResponseFields = {
+    headers: false,
+    body: false,
+    meta: true,
+    content: true,
+  };
+
+  if (!include) return defaults;
+
+  // Parse comma-separated string or JSON object
+  if (include.startsWith("{")) {
+    try {
+      const parsed = JSON.parse(include);
+      return {
+        headers: !!parsed.headers,
+        body: !!parsed.body,
+        meta: !!parsed.meta,
+        content: !!parsed.content,
+      };
+    } catch {
+      return defaults;
+    }
+  }
+
+  // Comma-separated format
+  const fields = include.toLowerCase().split(",").map((s) => s.trim());
+  return {
+    headers: fields.includes("headers"),
+    body: fields.includes("body"),
+    meta: fields.includes("meta"),
+    content: fields.includes("content"),
+  };
 }
 
 export async function fetchCommand(args: string[]): Promise<void> {
   const { values, positionals } = parseArgs({
     args,
     options: {
-      content: {
+      scope: {
         type: "string",
-        short: "c",
+        short: "s",
         default: "main",
       },
       format: {
         type: "string",
         short: "f",
-        default: "html",
+        default: "markdown",
+      },
+      include: {
+        type: "string",
+        short: "i",
+      },
+      data: {
+        type: "string",
+        short: "d",
       },
       output: {
         type: "string",
@@ -67,22 +143,34 @@ export async function fetchCommand(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const options: FetchOptions = {
-    url,
-    content: (values.content as "full" | "main") || "main",
-    format: (values.format as ContentFormat) || "html",
-    output: values.output,
-  };
-
-  if (options.content !== "full" && options.content !== "main") {
-    console.error('Error: Content must be "full" or "main"');
+  const scope = (values.scope as "full" | "main") || "main";
+  if (scope !== "full" && scope !== "main") {
+    console.error('Error: Scope must be "full" or "main"');
     process.exit(1);
   }
 
-  if (!["html", "markdown", "text"].includes(options.format)) {
+  const format = (values.format as ContentFormat) || "markdown";
+  if (!["html", "markdown", "text"].includes(format)) {
     console.error('Error: Format must be "html", "markdown", or "text"');
     process.exit(1);
   }
+
+  let dataRequest: DataRequest | null = null;
+  try {
+    dataRequest = parseDataParam(values.data);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
+    process.exit(1);
+  }
+
+  const options: FetchOptions = {
+    url,
+    scope,
+    format,
+    output: values.output,
+    include: parseIncludeFields(values.include),
+    data: dataRequest,
+  };
 
   await executeFetch(options);
 }
@@ -92,23 +180,56 @@ async function executeFetch(options: FetchOptions): Promise<void> {
 
   try {
     const result = await fetcher.fetch(options.url);
-    const meta = parseHtmlMeta(result.body);
-    const content = extractContent(
-      result.body,
-      options.content === "main",
-      options.format
-    );
 
-    const fetchResult: FetchResult = {
-      url: result.url,
-      statusCode: result.statusCode,
-      redirect: result.redirect,
-      timestamp: new Date().toISOString(),
-      meta,
-      content,
+    const apiRequest: ApiRequest = {
+      url: options.url,
+      options: {
+        scope: options.scope,
+        format: options.format,
+      },
     };
 
-    const outputText = JSON.stringify(fetchResult, null, 2);
+    if (options.data) {
+      apiRequest.data = options.data;
+    }
+
+    const apiResult: ApiResult = {
+      request: apiRequest,
+      response: {
+        timestamp: Date.now(),
+        url: result.url,
+        status: result.status,
+        redirect: result.redirect,
+      },
+    };
+
+    // Include optional fields based on include settings
+    if (options.include.headers) {
+      apiResult.response.headers = result.headers;
+    }
+
+    if (options.include.body) {
+      apiResult.response.body = result.body;
+    }
+
+    if (options.include.meta) {
+      apiResult.response.meta = parseHtmlMeta(result.body);
+    }
+
+    if (options.include.content) {
+      apiResult.response.content = extractContent(
+        result.body,
+        options.scope === "main",
+        options.format
+      );
+    }
+
+    // Run data plugins
+    if (options.data) {
+      apiResult.response.data = await runPlugins(result.body, options.data);
+    }
+
+    const outputText = JSON.stringify(apiResult, null, 2);
 
     // Write to file or stdout
     if (options.output) {
@@ -131,14 +252,30 @@ Usage:
   webcontent fetch <url> [options]
 
 Options:
-  -c, --content <type>    Content type: full | main (default: main)
-  -f, --format <fmt>      Output format: html | markdown | text (default: html)
+  -s, --scope <type>      Content scope: full | main (default: main)
+  -f, --format <fmt>      Output format: html | markdown | text (default: markdown)
+  -i, --include <fields>  Core response fields to include (default: meta,content)
+  -d, --data <plugins>    Data plugins to run
   -o, --output <file>     Write output to file instead of stdout
   -h, --help              Show this help message
 
+Include Fields:
+  meta      Page metadata (title, description, opengraph, etc.)
+  content   Extracted content in requested format
+  headers   Raw HTTP response headers
+  body      Raw HTML body
+
+Data Plugins:
+  headings  Extract heading hierarchy (h1-h6)
+  links     Extract internal/external links (planned)
+  images    Extract image URLs and alt text (planned)
+
 Examples:
   webcontent fetch https://example.com
-  webcontent fetch https://example.com -c main -f markdown
+  webcontent fetch https://example.com -s main -f markdown
+  webcontent fetch https://example.com -i "meta,content,headers"
+  webcontent fetch https://example.com -d headings
+  webcontent fetch https://example.com -d '{"headings":{"minLevel":2}}'
   webcontent fetch https://example.com -o result.json
 `);
 }

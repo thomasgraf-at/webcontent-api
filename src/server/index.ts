@@ -3,14 +3,85 @@ import {
   parseHtmlMeta,
   extractContent,
   type ContentFormat,
+  type PageMeta,
 } from "../services";
+import {
+  parseDataParam,
+  runPlugins,
+  type DataRequest,
+  type DataResponse,
+} from "../plugins";
 
 const PORT = parseInt(process.env.PORT || "233");
 
+interface ResponseFields {
+  headers: boolean;
+  body: boolean;
+  meta: boolean;
+  content: boolean;
+}
+
+interface ApiRequest {
+  url: string;
+  options: {
+    scope: "full" | "main";
+    format: ContentFormat;
+  };
+  data?: DataRequest;
+}
+
+interface ApiResponse {
+  timestamp: number;
+  url: string;
+  status: number;
+  redirect: string | null;
+  headers?: Record<string, string>;
+  body?: string;
+  meta?: PageMeta;
+  content?: string;
+  data?: DataResponse;
+}
+
+interface ApiResult {
+  request: ApiRequest;
+  response: ApiResponse;
+}
+
 interface FetchRequest {
   url: string;
-  content?: "full" | "main";
+  scope?: "full" | "main";
   format?: ContentFormat;
+  include?: string | ResponseFields;
+  data?: string | DataRequest;
+}
+
+function parseIncludeFields(include?: string | ResponseFields): ResponseFields {
+  const defaults: ResponseFields = {
+    headers: false,
+    body: false,
+    meta: true,
+    content: true,
+  };
+
+  if (!include) return defaults;
+
+  if (typeof include === "object") {
+    return {
+      headers: !!include.headers,
+      body: !!include.body,
+      meta: !!include.meta,
+      content: !!include.content,
+    };
+  }
+
+  // Comma-separated format
+  const fields = include.toLowerCase().split(",").map((s) => s.trim());
+  return {
+    headers: fields.includes("headers"),
+    body: fields.includes("body"),
+    meta: fields.includes("meta"),
+    content: fields.includes("content"),
+  };
 }
 
 const CORS_HEADERS = {
@@ -57,32 +128,67 @@ const server = Bun.serve({
           return jsonResponse({ error: "URL must start with http:// or https://" }, 400);
         }
 
-        const contentType = body.content || "main";
-        const format = body.format || "html";
+        const scope = body.scope || "main";
+        const format = body.format || "markdown";
+        const includeFields = parseIncludeFields(body.include);
 
-        if (contentType !== "full" && contentType !== "main") {
-          return jsonResponse({ error: 'Content must be "full" or "main"' }, 400);
+        if (scope !== "full" && scope !== "main") {
+          return jsonResponse({ error: 'Scope must be "full" or "main"' }, 400);
         }
 
         if (!["html", "markdown", "text"].includes(format)) {
           return jsonResponse({ error: 'Format must be "html", "markdown", or "text"' }, 400);
         }
 
+        let dataRequest: DataRequest | null = null;
+        try {
+          dataRequest = parseDataParam(body.data);
+        } catch (error) {
+          return jsonResponse(
+            { error: error instanceof Error ? error.message : "Invalid data parameter" },
+            400
+          );
+        }
+
         const fetcher = new WebFetcher();
         const result = await fetcher.fetch(body.url);
-        const meta = parseHtmlMeta(result.body);
-        const content = extractContent(result.body, contentType === "main", format);
 
-        const fetchResult = {
-          url: result.url,
-          statusCode: result.statusCode,
-          redirect: result.redirect,
-          timestamp: new Date().toISOString(),
-          meta,
-          content,
+        const apiRequest: ApiRequest = {
+          url: body.url,
+          options: { scope, format },
         };
 
-        return jsonResponse(fetchResult);
+        if (dataRequest) {
+          apiRequest.data = dataRequest;
+        }
+
+        const apiResult: ApiResult = {
+          request: apiRequest,
+          response: {
+            timestamp: Date.now(),
+            url: result.url,
+            status: result.status,
+            redirect: result.redirect,
+          },
+        };
+
+        if (includeFields.headers) {
+          apiResult.response.headers = result.headers;
+        }
+        if (includeFields.body) {
+          apiResult.response.body = result.body;
+        }
+        if (includeFields.meta) {
+          apiResult.response.meta = parseHtmlMeta(result.body);
+        }
+        if (includeFields.content) {
+          apiResult.response.content = extractContent(result.body, scope === "main", format);
+        }
+        if (dataRequest) {
+          apiResult.response.data = await runPlugins(result.body, dataRequest);
+        }
+
+        return jsonResponse(apiResult);
       } catch (error) {
         console.error("Error:", error);
         return jsonResponse(
@@ -104,33 +210,70 @@ const server = Bun.serve({
         return jsonResponse({ error: "URL must start with http:// or https://" }, 400);
       }
 
-      const contentType = (url.searchParams.get("content") || "main") as "full" | "main";
-      const format = (url.searchParams.get("format") || "html") as ContentFormat;
+      const scope = (url.searchParams.get("scope") || "main") as "full" | "main";
+      const format = (url.searchParams.get("format") || "markdown") as ContentFormat;
+      const includeParam = url.searchParams.get("include") || undefined;
+      const includeFields = parseIncludeFields(includeParam);
+      const dataParam = url.searchParams.get("data") || undefined;
 
-      if (contentType !== "full" && contentType !== "main") {
-        return jsonResponse({ error: 'Content must be "full" or "main"' }, 400);
+      if (scope !== "full" && scope !== "main") {
+        return jsonResponse({ error: 'Scope must be "full" or "main"' }, 400);
       }
 
       if (!["html", "markdown", "text"].includes(format)) {
         return jsonResponse({ error: 'Format must be "html", "markdown", or "text"' }, 400);
       }
 
+      let dataRequest: DataRequest | null = null;
+      try {
+        dataRequest = parseDataParam(dataParam);
+      } catch (error) {
+        return jsonResponse(
+          { error: error instanceof Error ? error.message : "Invalid data parameter" },
+          400
+        );
+      }
+
       try {
         const fetcher = new WebFetcher();
         const result = await fetcher.fetch(targetUrl);
-        const meta = parseHtmlMeta(result.body);
-        const content = extractContent(result.body, contentType === "main", format);
 
-        const fetchResult = {
-          url: result.url,
-          statusCode: result.statusCode,
-          redirect: result.redirect,
-          timestamp: new Date().toISOString(),
-          meta,
-          content,
+        const apiRequest: ApiRequest = {
+          url: targetUrl,
+          options: { scope, format },
         };
 
-        return jsonResponse(fetchResult);
+        if (dataRequest) {
+          apiRequest.data = dataRequest;
+        }
+
+        const apiResult: ApiResult = {
+          request: apiRequest,
+          response: {
+            timestamp: Date.now(),
+            url: result.url,
+            status: result.status,
+            redirect: result.redirect,
+          },
+        };
+
+        if (includeFields.headers) {
+          apiResult.response.headers = result.headers;
+        }
+        if (includeFields.body) {
+          apiResult.response.body = result.body;
+        }
+        if (includeFields.meta) {
+          apiResult.response.meta = parseHtmlMeta(result.body);
+        }
+        if (includeFields.content) {
+          apiResult.response.content = extractContent(result.body, scope === "main", format);
+        }
+        if (dataRequest) {
+          apiResult.response.data = await runPlugins(result.body, dataRequest);
+        }
+
+        return jsonResponse(apiResult);
       } catch (error) {
         console.error("Error:", error);
         return jsonResponse(

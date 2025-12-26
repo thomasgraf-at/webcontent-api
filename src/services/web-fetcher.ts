@@ -1,6 +1,6 @@
 export interface FetchResult {
   url: string;
-  statusCode: number;
+  status: number;
   redirect: string | null;
   headers: Record<string, string>;
   body: string;
@@ -34,7 +34,7 @@ export class WebFetcher {
 
     return {
       url,
-      statusCode: response.status,
+      status: response.status,
       redirect: isRedirect && location ? location : null,
       headers,
       body,

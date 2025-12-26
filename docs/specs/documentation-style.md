@@ -1,49 +1,97 @@
 # Documentation Style Guide
 
-This project maintains a structured documentation system across specialized subdirectories in `docs/` to ensure clarity, maintainability, and alignment between user needs and technical implementation.
+This project maintains a structured documentation system across specialized subdirectories in `docs/`.
 
 ## Documentation Structure
 
 ### 1. Specs (`docs/specs/`)
-**Purpose**: The authoritative source of truth for "what" the system does.
-- **Driven by**: User requirements and their iterative refinements.
-- **Alignment**: Must be strictly aligned with the actual implementation.
-- **Files**:
-    - `core.md`: Functional requirements and core interfaces.
-    - `documentation-style.md`: Guidelines for project documentation.
+
+**Purpose**: Steering document for development. Defines "what" the system does and should do.
+
+**Audience**: Developers, contributors, product stakeholders.
+
+**Contains**:
+- Product overview, use cases, design principles
+- Current functional requirements
+- Future directions and planned features
+- Interface specifications (CLI, API)
+
+**Files**:
+- `core.md`: Main product specification
+- `documentation-style.md`: This file
 
 ### 2. Implementation (`docs/implementation/`)
-**Purpose**: Describes "how" the requirements defined in the specs are met.
-- **Files**:
-    - `architecture.md`: High-level architecture, design decisions, and technical details.
-- **Target**: Developers and maintainers.
 
-### 3. Usage (`docs/usage/`)
-**Purpose**: In-depth guides for end-users of the various project components.
-- **Files**:
-    - `cli.md`: Comprehensive CLI reference.
-    - `server.md`: Server configuration and deployment.
-    - `api.md`: HTTP API endpoint documentation.
+**Purpose**: Describes "how" and "why" things are implemented.
 
-### 4. Planning (`docs/planning/`)
-**Purpose**: An incubator for future features and enhancements.
-- **Files**:
-    - `proposals.md`: Brainstorming and early-stage design ideas.
-- **Lifecycle**: Items here graduate to `specs/` and `implementation/` once refined.
+**Audience**: Developers and maintainers.
 
-### 5. User Readme (`README.md`)
-**Purpose**: The front door for users of the project. Contains quick start and installation.
+**Contains**:
+- Tech stack and dependencies
+- Project file structure
+- Design decisions with rationale
+- Code architecture and patterns
+
+**Files**:
+- `architecture.md`: Technical implementation details
+
+### 3. Planning (`docs/planning/`)
+
+**Purpose**: Incubator for not-yet-implemented features.
+
+**Audience**: Developers, contributors.
+
+**Contains**:
+- Feature proposals and brainstorming
+- Implementation roadmaps
+- Design explorations
+
+**Lifecycle**: Items graduate to `specs/` once approved and to `implementation/` once built.
+
+**Files**:
+- `proposals.md`: General feature proposals
+- `plugins.md`: Plugin system roadmap
+
+### 4. Usage (`docs/usage/`)
+
+**Purpose**: End-user guides for using and deploying the project.
+
+**Audience**: End users, operators.
+
+**Contains**:
+- How to use the CLI
+- How to use the HTTP API
+- How to deploy and configure
+
+**Files**:
+- `cli.md`: CLI usage guide
+- `api.md`: HTTP API reference
+- `deploy.md`: Deployment and configuration
+
+### 5. README.md
+
+**Purpose**: Front door for the project.
+
+**Contains**: Quick start, installation, basic examples.
 
 ---
 
-## General Guidelines
+## Writing Guidelines
 
 ### Format
-- **Markdown**: Use GitHub Flavored Markdown for all documentation.
-- **Tables**: Use tables for repetitive structures like API parameters or CLI options.
-- **Code Blocks**: Always specify the language (e.g., `bash`, `json`, `typescript`).
 
-### Tone & Style
-- **Concise**: Keep technical documentation brief and to the point.
-- **Action-Oriented**: Focus on what the user can do or how the system behaves.
-- **No Placeholders**: Documentation should reflect the current state of the project.
+- **Markdown**: Use GitHub Flavored Markdown
+- **Tables**: Use for repetitive structures (parameters, options)
+- **Code Blocks**: Always specify language (`bash`, `json`, `typescript`)
+
+### Tone
+
+- **Concise**: Brief and to the point
+- **Action-Oriented**: Focus on what users/developers can do
+- **Current**: Reflect actual state, not aspirations (except in planning/)
+
+### Structure
+
+- Use clear headings hierarchy
+- Lead with the most important information
+- Include examples for complex concepts
