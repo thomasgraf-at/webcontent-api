@@ -13,6 +13,7 @@ import {
   type DataResponse,
 } from "../plugins";
 import { DatabaseService, type PageData } from "../services";
+import { parseTtl, DEFAULT_TTL } from "../utils";
 
 interface FetchOptions {
   url: string;
@@ -179,10 +180,7 @@ export async function fetchCommand(args: string[]): Promise<void> {
   }
 
   const storeEnabled = !!values.store;
-  let storeTtl: number | undefined;
-  if (values.ttl && !isNaN(Number(values.ttl))) {
-    storeTtl = Number(values.ttl);
-  }
+  const storeTtl = parseTtl(values.ttl);
 
   const options: FetchOptions = {
     url,
@@ -266,7 +264,7 @@ async function executeFetch(options: FetchOptions): Promise<void> {
         const domain = domainParts.slice(-2).join("."); // Basic domain extraction
 
         const timestamp = Date.now();
-        const ttl = options.store.ttl || 30 * 24 * 60 * 60; // Default 30 days
+        const ttl = options.store.ttl || DEFAULT_TTL;
         const deleteAt = timestamp + ttl * 1000;
 
         const pageData: PageData = {
@@ -328,7 +326,8 @@ Options:
   -d, --data <plugins>    Data plugins to run
   -o, --output <file>     Write output to file instead of stdout
   --store                 Store fetch result in database
-  --ttl <seconds>         TTL for the stored record (default: 30 days)
+  --ttl <duration>        TTL for stored record (default: 30d)
+                          Formats: 60, 60min, 6h, 10d, 3mo, 1y
   --client <name>         Client/shard identifier for the stored record
   -h, --help              Show this help message
 
@@ -350,5 +349,6 @@ Examples:
   webcontent fetch https://example.com -d headings
   webcontent fetch https://example.com -d '{"headings":{"minLevel":2}}'
   webcontent fetch https://example.com -o result.json
+  webcontent fetch https://example.com --store --ttl 7d
 `);
 }

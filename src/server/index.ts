@@ -12,6 +12,7 @@ import {
   type DataResponse,
 } from "../plugins";
 import { DatabaseService, type PageData } from "../services";
+import { parseTtl, DEFAULT_TTL } from "../utils";
 
 const PORT = parseInt(process.env.PORT || "233");
 
@@ -204,7 +205,7 @@ const server = Bun.serve({
 
             const timestamp = Date.now();
             const storeOptions = typeof body.store === "object" ? body.store : {};
-            const ttl = storeOptions.ttl || 30 * 24 * 60 * 60;
+            const ttl = parseTtl(storeOptions.ttl) || DEFAULT_TTL;
             const deleteAt = timestamp + ttl * 1000;
 
             const pageData: PageData = {
@@ -331,19 +332,19 @@ const server = Bun.serve({
             const domain = domainParts.slice(-2).join(".");
 
             const timestamp = Date.now();
-            let ttl = 30 * 24 * 60 * 60;
+            let ttl = DEFAULT_TTL;
             let client: string | null = null;
 
             if (storeParam.startsWith("{")) {
               try {
                 const parsed = JSON.parse(storeParam);
-                ttl = parsed.ttl || ttl;
+                ttl = parseTtl(parsed.ttl) || ttl;
                 client = parsed.client || null;
               } catch {
                 // Ignore parse error
               }
-            } else if (!isNaN(Number(storeParam))) {
-              ttl = Number(storeParam);
+            } else {
+              ttl = parseTtl(storeParam) || ttl;
             }
 
             const pageData: PageData = {

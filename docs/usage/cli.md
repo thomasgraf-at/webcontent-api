@@ -36,7 +36,7 @@ webcontent fetch https://example.com
 | `--data` | `-d` | Data plugins to run | none |
 | `--output` | `-o` | Write output to file | stdout |
 | `--store` | - | Store results in Turso database | `false` |
-| `--ttl` | - | Custom TTL in seconds when storing | 30 days |
+| `--ttl` | - | TTL for stored record (duration format) | `30d` |
 | `--client` | - | Client/Shard ID for stored record | none |
 | `--help` | `-h` | Show help message | - |
 
@@ -99,10 +99,18 @@ webcontent fetch https://example.com --data headings,links
 ```
 
 ### Database Storage
-Store the result in Turso database with a 1-hour TTL and custom client ID:
+Store the result in Turso database with a custom TTL and client ID:
 ```bash
-webcontent fetch https://example.com --store --ttl 3600 --client "my-app-1"
+webcontent fetch https://example.com --store --ttl 7d --client "my-app-1"
 ```
+
+**TTL Duration Formats**:
+- Seconds: `3600`
+- Minutes: `60min`, `60m`
+- Hours: `6hours`, `6h`
+- Days: `7days`, `7d`
+- Months: `3months`, `3mo`
+- Years: `1year`, `1y`
 
 > [!NOTE]
 > Database storage requires `TURSO_URL` and optionally `TURSO_AUTH_TOKEN` environment variables to be set.

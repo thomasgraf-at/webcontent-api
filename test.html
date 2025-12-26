@@ -269,8 +269,8 @@
     </div>
     <div id="storeOptions" class="form-row" style="margin-top: 10px; display: none;">
       <div class="form-group flex-grow">
-        <label for="storeTtl">TTL (seconds):</label>
-        <input type="text" id="storeTtl" placeholder="2592000 (30 days)">
+        <label for="storeTtl">TTL:</label>
+        <input type="text" id="storeTtl" placeholder="7d, 6h, 3600">
       </div>
       <div class="form-group flex-grow">
         <label for="storeClient">Client ID:</label>
@@ -508,7 +508,7 @@
           if (data) body.data = data;
           if (storeEnabled) {
             body.store = {};
-            if (storeTtl) body.store.ttl = Number(storeTtl);
+            if (storeTtl) body.store.ttl = storeTtl;
             if (storeClient) body.store.client = storeClient;
           }
           response = await fetch(`${apiBase}/fetch`, {

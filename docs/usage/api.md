@@ -16,7 +16,7 @@ Fetch content using query parameters.
 | `format` | `html`, `markdown`, or `text` | `markdown` |
 | `include` | Comma-separated core fields | `meta,content` |
 | `data` | Comma-separated plugin names | none |
-| `store` | Boolean or TTL in seconds to enable storage | `false` |
+| `store` | Boolean or TTL duration to enable storage | `false` |
 | `client` | Client/Shard identifier for the record | none |
 
 **Example**:
@@ -76,11 +76,19 @@ Fetch content using a JSON body. This is preferred for complex requests or when 
 {
   "url": "https://example.com",
   "store": {
-    "ttl": 3600,
+    "ttl": "7d",
     "client": "my-client-id"
   }
 }
 ```
+
+**TTL Duration Formats**:
+- Seconds: `3600` or `"3600"`
+- Minutes: `"60min"`, `"60m"`
+- Hours: `"6hours"`, `"6h"`
+- Days: `"7days"`, `"7d"`
+- Months: `"3months"`, `"3mo"`
+- Years: `"1year"`, `"1y"`
 
 ---
 
