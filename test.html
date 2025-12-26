@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebContent API Test</title>
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    input[type="text"], select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    button {
+      background: #0066cc;
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      margin-right: 10px;
+    }
+    button:hover {
+      background: #0055aa;
+    }
+    button:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    .result {
+      margin-top: 20px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      padding: 15px;
+    }
+    .result h3 {
+      margin-top: 0;
+    }
+    pre {
+      background: #1e1e1e;
+      color: #d4d4d4;
+      padding: 15px;
+      border-radius: 4px;
+      overflow-x: auto;
+      max-height: 500px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .meta-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    .meta-table th, .meta-table td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: left;
+    }
+    .meta-table th {
+      background: #f0f0f0;
+      width: 150px;
+    }
+    .meta-table td {
+      word-break: break-all;
+    }
+    .error {
+      color: #cc0000;
+      background: #ffe6e6;
+      padding: 15px;
+      border-radius: 4px;
+      border: 1px solid #ffcccc;
+    }
+    .error h3 {
+      margin-top: 0;
+      color: #aa0000;
+    }
+    .error pre {
+      background: #fff5f5;
+      color: #cc0000;
+      border: 1px solid #ffcccc;
+    }
+    .loading {
+      color: #666;
+      font-style: italic;
+    }
+    .content-preview {
+      max-height: 400px;
+      overflow-y: auto;
+      background: #fafafa;
+      padding: 15px;
+      border: 1px solid #eee;
+      border-radius: 4px;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      font-family: monospace;
+      font-size: 13px;
+    }
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid #ddd;
+      margin-bottom: 15px;
+    }
+    .tab {
+      padding: 10px 20px;
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-size: 14px;
+      color: #666;
+    }
+    .tab:hover {
+      color: #333;
+    }
+    .tab.active {
+      border-bottom: 2px solid #0066cc;
+      color: #0066cc;
+      font-weight: 600;
+    }
+    .tab-content {
+      display: none;
+    }
+    .tab-content.active {
+      display: block;
+    }
+    .success-banner {
+      background: #e6ffe6;
+      border: 1px solid #99cc99;
+      color: #006600;
+      padding: 10px 15px;
+      border-radius: 4px;
+      margin-bottom: 15px;
+    }
+    .status-code {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 3px;
+      font-weight: 600;
+    }
+    .status-code.success {
+      background: #e6ffe6;
+      color: #006600;
+    }
+    .status-code.error {
+      background: #ffe6e6;
+      color: #cc0000;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebContent API Test</h1>
+
+  <div class="form-group">
+    <label for="url">URL to fetch:</label>
+    <input type="text" id="url" value="https://example.com" placeholder="https://example.com">
+  </div>
+
+  <div class="form-group">
+    <label for="contentType">Content type:</label>
+    <select id="contentType">
+      <option value="main" selected>main (extract main content)</option>
+      <option value="full">full (entire page body)</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label for="format">Format:</label>
+    <select id="format">
+      <option value="html">HTML</option>
+      <option value="markdown">Markdown</option>
+      <option value="text">Plain Text</option>
+    </select>
+  </div>
+
+  <button id="fetchBtn" onclick="fetchContent()">Fetch (GET)</button>
+  <button id="fetchPostBtn" onclick="fetchContentPost()">Fetch (POST)</button>
+  <button onclick="checkHealth()">Health Check</button>
+
+  <div id="result" class="result" style="display: none;">
+    <div id="resultBanner"></div>
+    <div class="tabs">
+      <button class="tab" data-tab="content">Content</button>
+      <button class="tab" data-tab="overview">Overview</button>
+      <button class="tab" data-tab="meta">Metadata</button>
+      <button class="tab" data-tab="raw">Raw JSON</button>
+    </div>
+
+    <div id="content" class="tab-content"></div>
+    <div id="overview" class="tab-content"></div>
+    <div id="meta" class="tab-content"></div>
+    <div id="raw" class="tab-content"></div>
+  </div>
+
+  <script>
+    const API_BASE = 'http://localhost:233';
+
+    // Tab handling
+    document.querySelectorAll('.tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        const tabName = tab.dataset.tab;
+        document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+        tab.classList.add('active');
+        document.getElementById(tabName).classList.add('active');
+      });
+    });
+
+    function showTab(tabName) {
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      document.querySelector(`.tab[data-tab="${tabName}"]`).classList.add('active');
+      document.getElementById(tabName).classList.add('active');
+    }
+
+    function showResult(data) {
+      const resultDiv = document.getElementById('result');
+      resultDiv.style.display = 'block';
+
+      // Success banner
+      const statusClass = data.statusCode >= 200 && data.statusCode < 400 ? 'success' : 'error';
+      document.getElementById('resultBanner').innerHTML = `
+        <div class="success-banner">
+          Fetched successfully: <strong>${data.url}</strong>
+          <span class="status-code ${statusClass}">${data.statusCode}</span>
+        </div>
+      `;
+
+      // Content tab (show first)
+      const format = document.getElementById('format').value;
+      document.getElementById('content').innerHTML = `
+        <h3>Content (${format})</h3>
+        <div class="content-preview">${escapeHtml(data.content || '(no content)')}</div>
+      `;
+
+      // Overview
+      document.getElementById('overview').innerHTML = `
+        <h3>Fetch Result</h3>
+        <table class="meta-table">
+          <tr><th>URL</th><td>${data.url}</td></tr>
+          <tr><th>Status Code</th><td><span class="status-code ${statusClass}">${data.statusCode}</span></td></tr>
+          <tr><th>Redirect</th><td>${data.redirect || 'None'}</td></tr>
+          <tr><th>Timestamp</th><td>${data.timestamp}</td></tr>
+          <tr><th>Title</th><td>${data.meta?.title || 'N/A'}</td></tr>
+          <tr><th>Content Length</th><td>${(data.content || '').length.toLocaleString()} characters</td></tr>
+        </table>
+      `;
+
+      // Metadata
+      const meta = data.meta || {};
+      document.getElementById('meta').innerHTML = `
+        <h3>Page Metadata</h3>
+        <table class="meta-table">
+          <tr><th>Title</th><td>${meta.title || 'N/A'}</td></tr>
+          <tr><th>Description</th><td>${meta.description || 'N/A'}</td></tr>
+          <tr><th>Keywords</th><td>${meta.keywords || 'N/A'}</td></tr>
+          <tr><th>Canonical</th><td>${meta.canonical || 'N/A'}</td></tr>
+          <tr><th>Robots</th><td>${meta.robots || 'N/A'}</td></tr>
+          <tr><th>Indexable</th><td>${meta.index ? 'Yes' : 'No'}</td></tr>
+          <tr><th>H1 Heading</th><td>${meta.heading || 'N/A'}</td></tr>
+        </table>
+        <h4>Open Graph</h4>
+        <table class="meta-table">
+          <tr><th>OG Title</th><td>${meta.opengraph?.title || 'N/A'}</td></tr>
+          <tr><th>OG Description</th><td>${meta.opengraph?.description || 'N/A'}</td></tr>
+          <tr><th>OG Image</th><td>${meta.opengraph?.image || 'N/A'}</td></tr>
+          <tr><th>OG Type</th><td>${meta.opengraph?.type || 'N/A'}</td></tr>
+          <tr><th>OG Site Name</th><td>${meta.opengraph?.siteName || 'N/A'}</td></tr>
+        </table>
+        ${meta.hreflang && meta.hreflang.length > 0 ? `
+          <h4>Hreflang Links</h4>
+          <table class="meta-table">
+            <tr><th>Language</th><th>URL</th></tr>
+            ${meta.hreflang.map(h => `<tr><td>${h.lang}</td><td>${h.url}</td></tr>`).join('')}
+          </table>
+        ` : ''}
+      `;
+
+      // Raw JSON
+      document.getElementById('raw').innerHTML = `
+        <h3>Raw Response</h3>
+        <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+      `;
+
+      // Show content tab by default
+      showTab('content');
+    }
+
+    function showError(error, details = null) {
+      const resultDiv = document.getElementById('result');
+      resultDiv.style.display = 'block';
+
+      document.getElementById('resultBanner').innerHTML = '';
+
+      const errorContent = `
+        <div class="error">
+          <h3>Error</h3>
+          <p><strong>${escapeHtml(String(error))}</strong></p>
+          ${details ? `
+            <h4>Details:</h4>
+            <pre>${escapeHtml(typeof details === 'object' ? JSON.stringify(details, null, 2) : String(details))}</pre>
+          ` : ''}
+        </div>
+      `;
+
+      document.getElementById('content').innerHTML = errorContent;
+      document.getElementById('overview').innerHTML = errorContent;
+      document.getElementById('meta').innerHTML = '';
+      document.getElementById('raw').innerHTML = details ? `<pre>${escapeHtml(typeof details === 'object' ? JSON.stringify(details, null, 2) : String(details))}</pre>` : '';
+
+      showTab('content');
+    }
+
+    function escapeHtml(text) {
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    async function fetchContent() {
+      const url = document.getElementById('url').value;
+      const contentType = document.getElementById('contentType').value;
+      const format = document.getElementById('format').value;
+
+      const btn = document.getElementById('fetchBtn');
+      btn.disabled = true;
+      btn.textContent = 'Fetching...';
+
+      try {
+        const params = new URLSearchParams({ url, content: contentType, format });
+
+        const response = await fetch(`${API_BASE}/fetch?${params}`);
+        const data = await response.json();
+
+        if (data.error) {
+          showError(data.error, {
+            status: response.status,
+            statusText: response.statusText,
+            response: data
+          });
+        } else {
+          showResult(data);
+        }
+      } catch (error) {
+        showError(error.message, {
+          type: error.name,
+          message: error.message,
+          stack: error.stack,
+          hint: 'Make sure the server is running: bun run server'
+        });
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Fetch (GET)';
+      }
+    }
+
+    async function fetchContentPost() {
+      const url = document.getElementById('url').value;
+      const contentType = document.getElementById('contentType').value;
+      const format = document.getElementById('format').value;
+
+      const btn = document.getElementById('fetchPostBtn');
+      btn.disabled = true;
+      btn.textContent = 'Fetching...';
+
+      try {
+        const response = await fetch(`${API_BASE}/fetch`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url, content: contentType, format })
+        });
+        const data = await response.json();
+
+        if (data.error) {
+          showError(data.error, {
+            status: response.status,
+            statusText: response.statusText,
+            response: data
+          });
+        } else {
+          showResult(data);
+        }
+      } catch (error) {
+        showError(error.message, {
+          type: error.name,
+          message: error.message,
+          stack: error.stack,
+          hint: 'Make sure the server is running: bun run server'
+        });
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Fetch (POST)';
+      }
+    }
+
+    async function checkHealth() {
+      try {
+        const response = await fetch(`${API_BASE}/health`);
+        const data = await response.json();
+        alert(`Health check: ${JSON.stringify(data)}\n\nServer is running on port 233`);
+      } catch (error) {
+        alert(`Health check failed!\n\nError: ${error.message}\n\nMake sure the server is running:\ncd webcontent && bun run server`);
+      }
+    }
+  </script>
+</body>
+</html>

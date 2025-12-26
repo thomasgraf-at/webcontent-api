@@ -1,0 +1,1 @@
+export { fetchCommand } from "./fetch";
