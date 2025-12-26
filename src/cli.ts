@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import { fetchCommand, storeCommand } from "./commands";
+import { fetchCommand, storeCommand, getCommand, getsCommand } from "./commands";
 
 const VERSION = "1.0.0";
 
@@ -14,6 +14,8 @@ Usage:
 Commands:
   fetch <url>    Fetch a web page (always fresh, bypasses cache)
   store <url>    Store page data directly in database
+  get            Get a stored page by ID
+  gets           Get multiple stored pages by IDs
 
 Global Options:
   -h, --help     Show this help message
@@ -21,8 +23,9 @@ Global Options:
 
 Examples:
   webcontent fetch https://example.com
-  webcontent fetch https://example.com -c main -f markdown
-  webcontent fetch https://example.com -s
+  webcontent fetch https://example.com --store --ttl 7d
+  webcontent get --id abc123def456
+  webcontent gets --ids abc123,def456,ghi789
 
 Run 'webcontent <command> --help' for more information on a command.
 `);
@@ -54,6 +57,12 @@ async function main(): Promise<void> {
       break;
     case "store":
       await storeCommand(commandArgs);
+      break;
+    case "get":
+      await getCommand(commandArgs);
+      break;
+    case "gets":
+      await getsCommand(commandArgs);
       break;
     default:
       console.error(`Unknown command: ${command}`);

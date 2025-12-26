@@ -7,4 +7,10 @@ export {
   type OpenGraph,
   type HreflangLink,
 } from "./html-parser";
-export { DatabaseService, type PageData, type StoreOptions } from "./database";
+export {
+  DatabaseService,
+  generatePageId,
+  type PageData,
+  type StoredPage,
+  type StoreOptions,
+} from "./database";

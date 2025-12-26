@@ -1,5 +1,36 @@
 # Changelog
 
+## 2025-12-27
+
+### Page IDs
+
+Added unique identifiers for stored pages using nanoid.
+
+**Features**:
+- 12-character URL-safe IDs generated with `nanoid`
+- IDs returned in store/fetch responses when storing
+- Direct page retrieval by ID
+
+**New API Endpoints**:
+- `GET /pages/:id` - Get single page by ID
+- `POST /get` with `{ id }` - Alternative single page lookup
+- `POST /gets` with `{ ids: [...] }` - Get multiple pages (max 100)
+
+**New CLI Commands**:
+- `webcontent get --id <id>` - Retrieve single page
+- `webcontent gets --ids <id1,id2,...>` - Retrieve multiple pages
+
+**Response Changes**:
+- `/store` now returns `id` in response
+- `/fetch` with `store` option now returns `id` in response
+- Retrieved pages include `cached: true` flag
+
+**Database Schema**:
+- Changed `id` column from `INTEGER AUTOINCREMENT` to `TEXT PRIMARY KEY`
+- IDs are generated on insert, not by database
+
+---
+
 ## 2025-12-26
 
 ### API Request Structure Refactoring

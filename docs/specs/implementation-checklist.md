@@ -11,9 +11,9 @@ Requirements for maintaining code quality and consistency.
 - [ ] Add high-level description of the changes to `docs/implementation/changelog.md`
 - [ ] Update `docs/implementation/` with technical details if useful
 - [ ] Update `docs/usage/` with user-facing changes (CLI, API)
-- [ ] Update `test.html` to reflect new API options and response format
+- [ ] Update test HTMLs (`/tests/*.html`) to reflect new API options and response format
 - [ ] Move completed items from `docs/planning/` to specs/implementation
-- [ ] Propose next steps in `docs/planning/` if there are any good ideas
+- [ ] Think about next steps and update themen in `docs/planning/`
 
 ## Documentation Sync
 
@@ -25,9 +25,9 @@ Keep these files aligned with the implementation:
 | `docs/usage/api.md` | API endpoints, parameters, response structure       |
 | `test.html`         | All API options, response format, available plugins |
 
-## Test page (`test.html`)
+## Test pages
 
-The test page must always:
+The test pages (`/tests/*.html`) must always:
 - Include all current API options (scope, format, include, data)
 - Handle the current response envelope structure
 - Show available data plugins (mark planned ones as disabled)

@@ -1,4 +1,5 @@
 import { createClient, type Client } from "@libsql/client";
+import { nanoid } from "nanoid";
 
 export interface StoreOptions {
   ttl?: number;
@@ -6,6 +7,7 @@ export interface StoreOptions {
 }
 
 export interface PageData {
+  id?: string;
   url: string;
   domain: string;
   hostname: string;
@@ -19,6 +21,14 @@ export interface PageData {
   timestamp: number;
   deleteAt: number;
   client: string | null;
+}
+
+export interface StoredPage extends PageData {
+  id: string;
+}
+
+export function generatePageId(): string {
+  return nanoid(12);
 }
 
 export class DatabaseService {
@@ -46,7 +56,7 @@ export class DatabaseService {
   async init(): Promise<void> {
     await this.client.execute(`
       CREATE TABLE IF NOT EXISTS pages (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id TEXT PRIMARY KEY,
         url TEXT NOT NULL,
         domain TEXT NOT NULL,
         hostname TEXT NOT NULL,
@@ -71,15 +81,18 @@ export class DatabaseService {
     await this.client.execute(`CREATE INDEX IF NOT EXISTS idx_pages_client ON pages(client);`);
   }
 
-  async storePage(data: PageData): Promise<void> {
+  async storePage(data: PageData): Promise<StoredPage> {
+    const id = data.id || generatePageId();
+
     await this.client.execute({
       sql: `
         INSERT INTO pages (
-          url, domain, hostname, path, client, title, status, 
+          id, url, domain, hostname, path, client, title, status,
           content, meta, data, options, timestamp, deleteAt
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       args: [
+        id,
         data.url,
         data.domain,
         data.hostname,
@@ -95,5 +108,70 @@ export class DatabaseService {
         data.deleteAt,
       ],
     });
+
+    return { ...data, id };
+  }
+
+  async getPageById(id: string, client?: string): Promise<StoredPage | null> {
+    let sql = `SELECT * FROM pages WHERE id = ?`;
+    const args: (string | null)[] = [id];
+
+    // Client isolation: if client specified, must match
+    if (client !== undefined) {
+      sql += ` AND client = ?`;
+      args.push(client);
+    }
+
+    const result = await this.client.execute({ sql, args });
+
+    if (result.rows.length === 0) {
+      return null;
+    }
+
+    return this.rowToStoredPage(result.rows[0]);
+  }
+
+  async getPagesByIds(ids: string[], client?: string): Promise<StoredPage[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+
+    const placeholders = ids.map(() => "?").join(", ");
+    let sql = `SELECT * FROM pages WHERE id IN (${placeholders})`;
+    const args: (string | null)[] = [...ids];
+
+    // Client isolation
+    if (client !== undefined) {
+      sql += ` AND client = ?`;
+      args.push(client);
+    }
+
+    const result = await this.client.execute({ sql, args });
+
+    // Convert rows to StoredPage objects
+    const pages = result.rows.map((row) => this.rowToStoredPage(row));
+
+    // Return in the same order as input IDs
+    const pageMap = new Map(pages.map((p) => [p.id, p]));
+    return ids.map((id) => pageMap.get(id)).filter((p): p is StoredPage => p !== undefined);
+  }
+
+  private rowToStoredPage(row: any): StoredPage {
+    return {
+      id: row.id as string,
+      url: row.url as string,
+      domain: row.domain as string,
+      hostname: row.hostname as string,
+      path: row.path as string,
+      client: row.client as string | null,
+      title: row.title as string | null,
+      status: row.status as number,
+      content: row.content as string | null,
+      meta: typeof row.meta === "string" ? JSON.parse(row.meta) : row.meta,
+      data: typeof row.data === "string" ? JSON.parse(row.data) : row.data,
+      options: typeof row.options === "string" ? JSON.parse(row.options) : row.options,
+      timestamp: row.timestamp as number,
+      deleteAt: row.deleteAt as number,
+    };
   }
 }

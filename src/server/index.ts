@@ -4,6 +4,7 @@ import {
   extractContent,
   type ContentFormat,
   type PageMeta,
+  type StoredPage,
 } from "../services";
 import {
   parseDataParam,
@@ -39,6 +40,7 @@ interface ApiRequest {
 }
 
 interface ApiResponse {
+  id?: string;
   timestamp: number;
   url: string;
   status: number;
@@ -48,6 +50,7 @@ interface ApiResponse {
   meta?: PageMeta;
   content?: string;
   data?: DataResponse;
+  cached?: boolean;
 }
 
 interface ApiResult {
@@ -83,9 +86,52 @@ interface StoreRequest {
 
 interface StoreResult {
   stored: boolean;
+  id: string;
   url: string;
   timestamp: number;
   deleteAt: number;
+}
+
+interface GetByIdRequest {
+  id: string;
+  client?: string;
+}
+
+interface GetsByIdsRequest {
+  ids: string[];
+  client?: string;
+}
+
+interface PageResponse {
+  request: { id: string };
+  response: {
+    id: string;
+    timestamp: number;
+    url: string;
+    status: number;
+    meta?: any;
+    content?: string;
+    data?: any;
+    options?: any;
+    cached: boolean;
+  };
+}
+
+interface PagesResponse {
+  count: number;
+  results: {
+    id: string;
+    url: string;
+    title?: string;
+    domain: string;
+    hostname: string;
+    timestamp: number;
+    status: number;
+    meta?: any;
+    content?: string;
+    data?: any;
+    options?: any;
+  }[];
 }
 
 function parseIncludeFields(include?: string | ResponseFields): ResponseFields {
@@ -133,6 +179,20 @@ function jsonResponse(data: unknown, status = 200): Response {
   });
 }
 
+function storedPageToResponse(page: StoredPage): PageResponse["response"] {
+  return {
+    id: page.id,
+    timestamp: page.timestamp,
+    url: page.url,
+    status: page.status,
+    meta: page.meta,
+    content: page.content || undefined,
+    data: page.data,
+    options: page.options,
+    cached: true,
+  };
+}
+
 const server = Bun.serve({
   port: PORT,
   hostname: "0.0.0.0",
@@ -150,6 +210,113 @@ const server = Bun.serve({
     }
 
     const db = new DatabaseService();
+
+    // GET /pages/:id - Get single page by ID
+    const pagesIdMatch = url.pathname.match(/^\/pages\/([a-zA-Z0-9_-]+)$/);
+    if (pagesIdMatch && req.method === "GET") {
+      try {
+        await db.init();
+        const id = pagesIdMatch[1];
+        const client = url.searchParams.get("client") || undefined;
+
+        const page = await db.getPageById(id, client);
+
+        if (!page) {
+          return jsonResponse({ error: "Page not found" }, 404);
+        }
+
+        const response: PageResponse = {
+          request: { id },
+          response: storedPageToResponse(page),
+        };
+
+        return jsonResponse(response);
+      } catch (error) {
+        console.error("Error:", error);
+        return jsonResponse(
+          { error: error instanceof Error ? error.message : "Internal server error" },
+          500
+        );
+      }
+    }
+
+    // POST /get - Get single page by ID (alternative)
+    if (url.pathname === "/get" && req.method === "POST") {
+      try {
+        const body = await req.json() as GetByIdRequest;
+
+        if (!body.id) {
+          return jsonResponse({ error: "ID is required" }, 400);
+        }
+
+        await db.init();
+        const page = await db.getPageById(body.id, body.client);
+
+        if (!page) {
+          return jsonResponse({ error: "Page not found" }, 404);
+        }
+
+        const response: PageResponse = {
+          request: { id: body.id },
+          response: storedPageToResponse(page),
+        };
+
+        return jsonResponse(response);
+      } catch (error) {
+        console.error("Error:", error);
+        return jsonResponse(
+          { error: error instanceof Error ? error.message : "Internal server error" },
+          500
+        );
+      }
+    }
+
+    // POST /gets - Get multiple pages by IDs
+    if (url.pathname === "/gets" && req.method === "POST") {
+      try {
+        const body = await req.json() as GetsByIdsRequest;
+
+        if (!body.ids || !Array.isArray(body.ids)) {
+          return jsonResponse({ error: "IDs array is required" }, 400);
+        }
+
+        if (body.ids.length === 0) {
+          return jsonResponse({ count: 0, results: [] });
+        }
+
+        if (body.ids.length > 100) {
+          return jsonResponse({ error: "Maximum 100 IDs per request" }, 400);
+        }
+
+        await db.init();
+        const pages = await db.getPagesByIds(body.ids, body.client);
+
+        const response: PagesResponse = {
+          count: pages.length,
+          results: pages.map((page) => ({
+            id: page.id,
+            url: page.url,
+            title: page.title || undefined,
+            domain: page.domain,
+            hostname: page.hostname,
+            timestamp: page.timestamp,
+            status: page.status,
+            meta: page.meta,
+            content: page.content || undefined,
+            data: page.data,
+            options: page.options,
+          })),
+        };
+
+        return jsonResponse(response);
+      } catch (error) {
+        console.error("Error:", error);
+        return jsonResponse(
+          { error: error instanceof Error ? error.message : "Internal server error" },
+          500
+        );
+      }
+    }
 
     // Fetch endpoint
     if (url.pathname === "/fetch" && req.method === "POST") {
@@ -267,7 +434,8 @@ const server = Bun.serve({
               deleteAt,
             };
 
-            await db.storePage(pageData);
+            const storedPage = await db.storePage(pageData);
+            apiResult.response.id = storedPage.id;
           } catch (dbError) {
             console.error(
               "Database Error:",
@@ -330,10 +498,11 @@ const server = Bun.serve({
           deleteAt,
         };
 
-        await db.storePage(pageData);
+        const storedPage = await db.storePage(pageData);
 
         const result: StoreResult = {
           stored: true,
+          id: storedPage.id,
           url: body.url,
           timestamp,
           deleteAt,
@@ -477,7 +646,8 @@ const server = Bun.serve({
               deleteAt: timestamp + ttl * 1000,
             };
 
-            await db.storePage(pageData);
+            const storedPage = await db.storePage(pageData);
+            apiResult.response.id = storedPage.id;
           } catch (dbError) {
             console.error(
               "Database Error:",

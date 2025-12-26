@@ -6,6 +6,7 @@ Technical details for the Turso/libSQL database integration.
 
 - **Database**: Turso (managed libSQL)
 - **Client**: `@libsql/client`
+- **ID Generation**: `nanoid` (12-character URL-safe IDs)
 
 ## Configuration
 
@@ -20,7 +21,7 @@ Technical details for the Turso/libSQL database integration.
 
 ```sql
 CREATE TABLE pages (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  id TEXT PRIMARY KEY,
   url TEXT NOT NULL,
   domain TEXT NOT NULL,
   hostname TEXT NOT NULL,
@@ -52,7 +53,7 @@ CREATE INDEX idx_pages_client ON pages(client);
 
 | Column | Type | Description |
 |--------|------|-------------|
-| `id` | INTEGER | Auto-incrementing primary key |
+| `id` | TEXT | 12-character nanoid (URL-safe) |
 | `url` | TEXT | Full original URL |
 | `domain` | TEXT | Base domain (e.g., `example.com`) |
 | `hostname` | TEXT | Full hostname (e.g., `www.example.com`) |
@@ -75,16 +76,21 @@ Location: `src/services/database.ts`
 
 ```typescript
 class DatabaseService {
-  constructor()           // Reads TURSO_URL and TURSO_AUTH_TOKEN
-  async init()            // Creates table and indexes if not exist
-  async storePage(data)   // Inserts a PageData record
+  constructor()                                    // Reads TURSO_URL and TURSO_AUTH_TOKEN
+  async init()                                     // Creates table and indexes if not exist
+  async storePage(data: PageData): StoredPage     // Inserts and returns with generated ID
+  async getPageById(id, client?): StoredPage|null // Get single page by ID
+  async getPagesByIds(ids[], client?): StoredPage[] // Get multiple pages (preserves order)
 }
+
+function generatePageId(): string                  // Returns 12-char nanoid
 ```
 
 ### PageData Interface
 
 ```typescript
 interface PageData {
+  id?: string;           // Optional - generated if not provided
   url: string;
   domain: string;
   hostname: string;
@@ -99,7 +105,26 @@ interface PageData {
   timestamp: number;
   deleteAt: number;
 }
+
+interface StoredPage extends PageData {
+  id: string;            // Always present after storage
+}
 ```
+
+## ID Generation
+
+IDs are generated using `nanoid(12)`:
+- 12 characters
+- URL-safe alphabet: `A-Za-z0-9_-`
+- ~62^12 = 3.2×10²¹ possible values
+- Example: `V1StGXR8_Z5j`
+
+## Client Isolation
+
+When retrieving pages by ID, client isolation is enforced:
+- If `client` parameter provided, only returns pages matching that client
+- If page belongs to different client, returns null/404
+- Prevents cross-client data access
 
 ## Storage Behavior
 

@@ -52,6 +52,7 @@ interface ApiRequest {
 }
 
 interface ApiResponse {
+  id?: string;
   timestamp: number;
   url: string;
   status: number;
@@ -300,8 +301,9 @@ async function executeFetch(options: FetchOptions): Promise<void> {
           deleteAt,
         };
 
-        await db.storePage(pageData);
-        console.error("Successfully stored page in database");
+        const storedPage = await db.storePage(pageData);
+        apiResult.response.id = storedPage.id;
+        console.error(`Successfully stored page in database (ID: ${storedPage.id})`);
       } catch (dbError) {
         console.error(
           "Database Error:",

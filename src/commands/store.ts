@@ -17,6 +17,7 @@ interface StoreInput {
 
 interface StoreResult {
   stored: boolean;
+  id: string;
   url: string;
   timestamp: number;
   deleteAt: number;
@@ -162,10 +163,11 @@ async function executeStore(input: StoreInput): Promise<void> {
       deleteAt,
     };
 
-    await db.storePage(pageData);
+    const storedPage = await db.storePage(pageData);
 
     const result: StoreResult = {
       stored: true,
+      id: storedPage.id,
       url: input.url,
       timestamp,
       deleteAt,

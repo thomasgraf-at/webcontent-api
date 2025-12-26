@@ -162,9 +162,73 @@ webcontent store https://example.com --content "Content" --ttl 7d --client "my-a
 
 ---
 
+## Get Command
+
+The `get` command retrieves a stored page by its ID.
+
+```bash
+webcontent get --id <page-id> [options]
+```
+
+### Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--id` | - | Page ID to retrieve (required) |
+| `--client` | - | Client/shard identifier (for isolation) |
+| `--output` | `-o` | Write output to file |
+
+### Examples
+
+```bash
+# Get page by ID
+webcontent get --id V1StGXR8_Z5j
+
+# Get with client isolation
+webcontent get --id V1StGXR8_Z5j --client my-app
+
+# Save to file
+webcontent get --id V1StGXR8_Z5j -o page.json
+```
+
+---
+
+## Gets Command
+
+The `gets` command retrieves multiple stored pages by their IDs.
+
+```bash
+webcontent gets --ids <id1,id2,...> [options]
+```
+
+### Options
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--ids` | - | Comma-separated page IDs (required, max 100) |
+| `--client` | - | Client/shard identifier (for isolation) |
+| `--output` | `-o` | Write output to file |
+
+### Examples
+
+```bash
+# Get multiple pages
+webcontent gets --ids V1StGXR8_Z5j,abc123def456
+
+# Get with client isolation
+webcontent gets --ids V1StGXR8_Z5j,abc123def456 --client my-app
+
+# Save to file
+webcontent gets --ids V1StGXR8_Z5j,abc123def456 -o pages.json
+```
+
+---
+
 ## Output Format
 
-All output is JSON with a request/response envelope:
+All output is JSON with a request/response envelope.
+
+### Fetch Response
 
 ```json
 {
@@ -177,6 +241,7 @@ All output is JSON with a request/response envelope:
     }
   },
   "response": {
+    "id": "V1StGXR8_Z5j",
     "timestamp": 1700000000000,
     "url": "https://example.com",
     "status": 200,
@@ -189,5 +254,61 @@ All output is JSON with a request/response envelope:
       ]
     }
   }
+}
+```
+
+> [!NOTE]
+> The `id` field is only present when `--store` is used.
+
+### Store Response
+
+```json
+{
+  "stored": true,
+  "id": "V1StGXR8_Z5j",
+  "url": "https://example.com",
+  "timestamp": 1700000000000,
+  "deleteAt": 1702592000000
+}
+```
+
+### Get Response
+
+```json
+{
+  "request": { "id": "V1StGXR8_Z5j" },
+  "response": {
+    "id": "V1StGXR8_Z5j",
+    "timestamp": 1700000000000,
+    "url": "https://example.com",
+    "status": 200,
+    "meta": { ... },
+    "content": "...",
+    "data": { ... },
+    "cached": true
+  }
+}
+```
+
+### Gets Response
+
+```json
+{
+  "count": 2,
+  "results": [
+    {
+      "id": "V1StGXR8_Z5j",
+      "url": "https://example.com",
+      "title": "Example",
+      "domain": "example.com",
+      "hostname": "www.example.com",
+      "timestamp": 1700000000000,
+      "status": 200,
+      "meta": { ... },
+      "content": "...",
+      "data": { ... }
+    },
+    ...
+  ]
 }
 ```

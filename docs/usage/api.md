@@ -147,9 +147,108 @@ Store page data directly in the database without fetching.
 ```json
 {
   "stored": true,
+  "id": "V1StGXR8_Z5j",
   "url": "https://example.com",
   "timestamp": 1700000000000,
   "deleteAt": 1700604800000
+}
+```
+
+---
+
+### `GET /pages/:id`
+
+Get a stored page by its ID.
+
+**Parameters**:
+
+| Parameter | Description | Required |
+|-----------|-------------|----------|
+| `client` | Client/shard identifier (for isolation) | No |
+
+**Example**:
+```bash
+curl "http://localhost:233/pages/V1StGXR8_Z5j"
+```
+
+**With Client Isolation**:
+```bash
+curl "http://localhost:233/pages/V1StGXR8_Z5j?client=my-app"
+```
+
+**Response**:
+```json
+{
+  "request": { "id": "V1StGXR8_Z5j" },
+  "response": {
+    "id": "V1StGXR8_Z5j",
+    "timestamp": 1700000000000,
+    "url": "https://example.com",
+    "status": 200,
+    "meta": { ... },
+    "content": "...",
+    "data": { ... },
+    "options": { ... },
+    "cached": true
+  }
+}
+```
+
+---
+
+### `POST /get`
+
+Alternative endpoint to get a stored page by ID using JSON body.
+
+**Request Body**:
+```json
+{
+  "id": "V1StGXR8_Z5j",
+  "client": "my-app"
+}
+```
+
+**Response**: Same as `GET /pages/:id`
+
+---
+
+### `POST /gets`
+
+Get multiple stored pages by their IDs.
+
+**Request Body**:
+```json
+{
+  "ids": ["V1StGXR8_Z5j", "abc123def456", "xyz789"],
+  "client": "my-app"
+}
+```
+
+**Constraints**:
+- Maximum 100 IDs per request
+- Results are returned in the same order as input IDs
+- Missing IDs are omitted from results
+
+**Response**:
+```json
+{
+  "count": 2,
+  "results": [
+    {
+      "id": "V1StGXR8_Z5j",
+      "url": "https://example.com",
+      "title": "Example Page",
+      "domain": "example.com",
+      "hostname": "www.example.com",
+      "timestamp": 1700000000000,
+      "status": 200,
+      "meta": { ... },
+      "content": "...",
+      "data": { ... },
+      "options": { ... }
+    },
+    ...
+  ]
 }
 ```
 
@@ -172,6 +271,7 @@ All responses use a standard envelope format:
     }
   },
   "response": {
+    "id": "V1StGXR8_Z5j",
     "timestamp": 1700000000000,
     "url": "https://example.com",
     "status": 200,
@@ -195,6 +295,9 @@ All responses use a standard envelope format:
 - `url`: The final URL fetched.
 - `status`: HTTP status code from the target server.
 - `redirect`: If the response was a redirect (3xx), contains the `Location` header value.
+
+**Returned when storing**:
+- `id`: Unique 12-character page ID (only present when `store` option is used).
 
 **Controlled by `include`**:
 - `meta`: Metadata about the page (title, description, opengraph, etc.).
