@@ -104,6 +104,7 @@ function jsonResponse(data: unknown, status = 200): Response {
 
 const server = Bun.serve({
   port: PORT,
+  hostname: "0.0.0.0",
   async fetch(req) {
     const url = new URL(req.url);
 

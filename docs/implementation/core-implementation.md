@@ -65,6 +65,7 @@ webcontent/
 │       ├── types.ts                # Plugin interfaces
 │       └── headings.ts             # Headings plugin
 ├── test.html                       # Browser test page
+├── Dockerfile                      # Docker build config
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -129,6 +130,20 @@ Default port for local development.
 - Memorable, uncommon
 - Doesn't conflict with common ports (3000, 8080)
 - Cloud deployments use platform-standard configuration
+
+### 9. Server Binding
+
+Server binds to `0.0.0.0` instead of `localhost`.
+- Required for containerized deployments (Cloud Run, Docker)
+- Accepts connections from any network interface
+- `hostname: "0.0.0.0"` in `Bun.serve()` config
+
+### 10. Docker: Node + Bun Hybrid
+
+Docker uses Node.js base with Bun runtime.
+- `@libsql/client` requires native binaries (`@libsql/linux-x64-gnu`)
+- `npm install` properly installs native deps; `bun install` in containers does not
+- Bun runs the TypeScript server; npm handles dependency installation
 
 ---
 

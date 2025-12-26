@@ -212,6 +212,14 @@
   <h1>WebContent API Test</h1>
 
   <div class="form-group">
+    <label for="server">Server:</label>
+    <select id="server">
+      <option value="http://localhost:233">Local (http://localhost:233)</option>
+      <option value="https://webcontent-683135941939.europe-west1.run.app">Cloud Run (europe-west1)</option>
+    </select>
+  </div>
+
+  <div class="form-group">
     <label for="url">URL to fetch:</label>
     <input type="text" id="url" value="https://example.com" placeholder="https://example.com">
   </div>
@@ -293,7 +301,9 @@
   </div>
 
   <script>
-    const API_BASE = 'http://localhost:233';
+    function getApiBase() {
+      return document.getElementById('server').value;
+    }
 
     // Store options toggle
     document.getElementById('storeEnabled').addEventListener('change', (e) => {
@@ -484,6 +494,7 @@
         const storeTtl = document.getElementById('storeTtl').value;
         const storeClient = document.getElementById('storeClient').value;
 
+        const apiBase = getApiBase();
         if (method === 'GET') {
           const params = new URLSearchParams({ url, scope, format, include });
           if (data) params.set('data', data);
@@ -491,7 +502,7 @@
             params.set('store', storeTtl || 'true');
             if (storeClient) params.set('client', storeClient);
           }
-          response = await fetch(`${API_BASE}/fetch?${params}`);
+          response = await fetch(`${apiBase}/fetch?${params}`);
         } else {
           const body = { url, scope, format, include };
           if (data) body.data = data;
@@ -500,7 +511,7 @@
             if (storeTtl) body.store.ttl = Number(storeTtl);
             if (storeClient) body.store.client = storeClient;
           }
-          response = await fetch(`${API_BASE}/fetch`, {
+          response = await fetch(`${apiBase}/fetch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
@@ -532,12 +543,13 @@
     }
 
     async function checkHealth() {
+      const apiBase = getApiBase();
       try {
-        const response = await fetch(`${API_BASE}/health`);
+        const response = await fetch(`${apiBase}/health`);
         const data = await response.json();
-        alert(`Health check: ${JSON.stringify(data)}\n\nServer is running on port 233`);
+        alert(`Health check: ${JSON.stringify(data)}\n\nServer: ${apiBase}`);
       } catch (error) {
-        alert(`Health check failed!\n\nError: ${error.message}\n\nMake sure the server is running:\nbun run server`);
+        alert(`Health check failed!\n\nServer: ${apiBase}\nError: ${error.message}\n\nMake sure the server is running.`);
       }
     }
   </script>
