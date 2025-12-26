@@ -37,6 +37,9 @@ webcontent fetch <url> [options]
 | `--content` | `-c` | Content type: `full` or `main` | `main` |
 | `--format` | `-f` | Output format: `html`, `markdown`, or `text` | `html` |
 | `--output` | `-o` | Write output to file | stdout |
+| `--store` | - | Store in database | `false` |
+| `--ttl` | - | Custom TTL in seconds | 30 days |
+| `--client` | - | Client/Shard identifier | none |
 | `--help` | `-h` | Show help | - |
 
 **Examples:**
@@ -51,6 +54,13 @@ webcontent fetch https://example.com -c main -f markdown
 # Save to file
 webcontent fetch https://example.com -o result.json
 ```
+
+## Configuration
+
+Database storage (via Turso) requires the following environment variables:
+
+- `TURSO_URL`: The URL of your Turso database (e.g., `libsql://my-db.turso.io` or `file:local.db`).
+- `TURSO_AUTH_TOKEN`: (Optional) Your Turso authentication token.
 
 ## Server Usage
 

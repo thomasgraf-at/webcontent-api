@@ -16,6 +16,7 @@
     "build:server": "bun build src/server/index.ts --compile --outfile dist/webcontent-server"
   },
   "dependencies": {
+    "@libsql/client": "^0.15.15",
     "node-html-parser": "^6.1.13",
     "turndown": "^7.2.0"
   },

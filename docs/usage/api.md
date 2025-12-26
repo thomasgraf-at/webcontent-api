@@ -16,6 +16,8 @@ Fetch content using query parameters.
 | `format` | `html`, `markdown`, or `text` | `markdown` |
 | `include` | Comma-separated core fields | `meta,content` |
 | `data` | Comma-separated plugin names | none |
+| `store` | Boolean or TTL in seconds to enable storage | `false` |
+| `client` | Client/Shard identifier for the record | none |
 
 **Example**:
 ```bash
@@ -65,6 +67,17 @@ Fetch content using a JSON body. This is preferred for complex requests or when 
   "data": {
     "headings": { "minLevel": 1, "maxLevel": 3 },
     "links": true
+  }
+}
+```
+
+**With Database Storage**:
+```json
+{
+  "url": "https://example.com",
+  "store": {
+    "ttl": 3600,
+    "client": "my-client-id"
   }
 }
 ```

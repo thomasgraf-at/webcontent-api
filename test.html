@@ -254,6 +254,23 @@
     </div>
   </div>
 
+  <div class="form-group">
+    <label>Database Storage:</label>
+    <div class="checkbox-group">
+      <label><input type="checkbox" id="storeEnabled"> Store in DB</label>
+    </div>
+    <div id="storeOptions" class="form-row" style="margin-top: 10px; display: none;">
+      <div class="form-group flex-grow">
+        <label for="storeTtl">TTL (seconds):</label>
+        <input type="text" id="storeTtl" placeholder="2592000 (30 days)">
+      </div>
+      <div class="form-group flex-grow">
+        <label for="storeClient">Client ID:</label>
+        <input type="text" id="storeClient" placeholder="my-client-id">
+      </div>
+    </div>
+  </div>
+
   <button id="fetchBtn" onclick="fetchContent('GET')">Fetch (GET)</button>
   <button id="fetchPostBtn" onclick="fetchContent('POST')">Fetch (POST)</button>
   <button class="secondary" onclick="checkHealth()">Health Check</button>
@@ -277,6 +294,11 @@
 
   <script>
     const API_BASE = 'http://localhost:233';
+
+    // Store options toggle
+    document.getElementById('storeEnabled').addEventListener('change', (e) => {
+      document.getElementById('storeOptions').style.display = e.target.checked ? 'flex' : 'none';
+    });
 
     // Tab handling
     document.querySelectorAll('.tab').forEach(tab => {
@@ -458,14 +480,26 @@
 
       try {
         let response;
+        const storeEnabled = document.getElementById('storeEnabled').checked;
+        const storeTtl = document.getElementById('storeTtl').value;
+        const storeClient = document.getElementById('storeClient').value;
 
         if (method === 'GET') {
           const params = new URLSearchParams({ url, scope, format, include });
           if (data) params.set('data', data);
+          if (storeEnabled) {
+            params.set('store', storeTtl || 'true');
+            if (storeClient) params.set('client', storeClient);
+          }
           response = await fetch(`${API_BASE}/fetch?${params}`);
         } else {
           const body = { url, scope, format, include };
           if (data) body.data = data;
+          if (storeEnabled) {
+            body.store = {};
+            if (storeTtl) body.store.ttl = Number(storeTtl);
+            if (storeClient) body.store.client = storeClient;
+          }
           response = await fetch(`${API_BASE}/fetch`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

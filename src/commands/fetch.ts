@@ -12,6 +12,7 @@ import {
   type DataRequest,
   type DataResponse,
 } from "../plugins";
+import { DatabaseService, type PageData } from "../services";
 
 interface FetchOptions {
   url: string;
@@ -20,6 +21,11 @@ interface FetchOptions {
   output?: string;
   include: ResponseFields;
   data: DataRequest | null;
+  store: {
+    enabled: boolean;
+    ttl?: number;
+    client?: string;
+  };
 }
 
 interface ResponseFields {
@@ -117,6 +123,15 @@ export async function fetchCommand(args: string[]): Promise<void> {
         type: "string",
         short: "o",
       },
+      store: {
+        type: "boolean",
+      },
+      ttl: {
+        type: "string",
+      },
+      client: {
+        type: "string",
+      },
       help: {
         type: "boolean",
         short: "h",
@@ -163,6 +178,12 @@ export async function fetchCommand(args: string[]): Promise<void> {
     process.exit(1);
   }
 
+  const storeEnabled = !!values.store;
+  let storeTtl: number | undefined;
+  if (values.ttl && !isNaN(Number(values.ttl))) {
+    storeTtl = Number(values.ttl);
+  }
+
   const options: FetchOptions = {
     url,
     scope,
@@ -170,6 +191,11 @@ export async function fetchCommand(args: string[]): Promise<void> {
     output: values.output,
     include: parseIncludeFields(values.include),
     data: dataRequest,
+    store: {
+      enabled: storeEnabled,
+      ttl: storeTtl,
+      client: values.client,
+    },
   };
 
   await executeFetch(options);
@@ -229,6 +255,50 @@ async function executeFetch(options: FetchOptions): Promise<void> {
       apiResult.response.data = await runPlugins(result.body, options.data);
     }
 
+    // Database storage
+    if (options.store.enabled) {
+      try {
+        const db = new DatabaseService();
+        await db.init();
+
+        const urlObj = new URL(result.url);
+        const domainParts = urlObj.hostname.split(".");
+        const domain = domainParts.slice(-2).join("."); // Basic domain extraction
+
+        const timestamp = Date.now();
+        const ttl = options.store.ttl || 30 * 24 * 60 * 60; // Default 30 days
+        const deleteAt = timestamp + ttl * 1000;
+
+        const pageData: PageData = {
+          url: result.url,
+          domain: domain,
+          hostname: urlObj.hostname,
+          path: urlObj.pathname,
+          client: options.store.client || null,
+          title: apiResult.response.meta?.title || null,
+          status: result.status,
+          content: apiResult.response.content || null,
+          meta: apiResult.response.meta || {},
+          data: apiResult.response.data || {},
+          options: {
+            scope: options.scope,
+            format: options.format,
+          },
+          timestamp,
+          deleteAt,
+        };
+
+        await db.storePage(pageData);
+        console.error("Successfully stored page in database");
+      } catch (dbError) {
+        console.error(
+          "Database Error:",
+          dbError instanceof Error ? dbError.message : dbError
+        );
+        // Don't exit here, still output the fetch result
+      }
+    }
+
     const outputText = JSON.stringify(apiResult, null, 2);
 
     // Write to file or stdout
@@ -257,6 +327,9 @@ Options:
   -i, --include <fields>  Core response fields to include (default: meta,content)
   -d, --data <plugins>    Data plugins to run
   -o, --output <file>     Write output to file instead of stdout
+  --store                 Store fetch result in database
+  --ttl <seconds>         TTL for the stored record (default: 30 days)
+  --client <name>         Client/shard identifier for the stored record
   -h, --help              Show this help message
 
 Include Fields:

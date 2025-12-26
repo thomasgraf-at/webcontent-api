@@ -11,6 +11,7 @@ import {
   type DataRequest,
   type DataResponse,
 } from "../plugins";
+import { DatabaseService, type PageData } from "../services";
 
 const PORT = parseInt(process.env.PORT || "233");
 
@@ -53,6 +54,7 @@ interface FetchRequest {
   format?: ContentFormat;
   include?: string | ResponseFields;
   data?: string | DataRequest;
+  store?: boolean | { ttl?: number; client?: string };
 }
 
 function parseIncludeFields(include?: string | ResponseFields): ResponseFields {
@@ -114,6 +116,8 @@ const server = Bun.serve({
     if (url.pathname === "/health") {
       return jsonResponse({ status: "ok" });
     }
+
+    const db = new DatabaseService();
 
     // Fetch endpoint
     if (url.pathname === "/fetch" && req.method === "POST") {
@@ -186,6 +190,48 @@ const server = Bun.serve({
         }
         if (dataRequest) {
           apiResult.response.data = await runPlugins(result.body, dataRequest);
+        }
+
+        // Database storage
+        if (body.store) {
+          try {
+            await db.init();
+
+            const urlObj = new URL(result.url);
+            const domainParts = urlObj.hostname.split(".");
+            const domain = domainParts.slice(-2).join(".");
+
+            const timestamp = Date.now();
+            const storeOptions = typeof body.store === "object" ? body.store : {};
+            const ttl = storeOptions.ttl || 30 * 24 * 60 * 60;
+            const deleteAt = timestamp + ttl * 1000;
+
+            const pageData: PageData = {
+              url: result.url,
+              domain: domain,
+              hostname: urlObj.hostname,
+              path: urlObj.pathname,
+              client: storeOptions.client || null,
+              title: apiResult.response.meta?.title || null,
+              status: result.status,
+              content: apiResult.response.content || null,
+              meta: apiResult.response.meta || {},
+              data: apiResult.response.data || {},
+              options: {
+                scope,
+                format,
+              },
+              timestamp,
+              deleteAt,
+            };
+
+            await db.storePage(pageData);
+          } catch (dbError) {
+            console.error(
+              "Database Error:",
+              dbError instanceof Error ? dbError.message : dbError
+            );
+          }
         }
 
         return jsonResponse(apiResult);
@@ -271,6 +317,60 @@ const server = Bun.serve({
         }
         if (dataRequest) {
           apiResult.response.data = await runPlugins(result.body, dataRequest);
+        }
+
+        // Database storage (GET /fetch usually defaults to no store unless specified)
+        const storeParam = url.searchParams.get("store");
+        if (storeParam) {
+          try {
+            await db.init();
+
+            const urlObj = new URL(result.url);
+            const domainParts = urlObj.hostname.split(".");
+            const domain = domainParts.slice(-2).join(".");
+
+            const timestamp = Date.now();
+            let ttl = 30 * 24 * 60 * 60;
+            let client: string | null = null;
+
+            if (storeParam.startsWith("{")) {
+              try {
+                const parsed = JSON.parse(storeParam);
+                ttl = parsed.ttl || ttl;
+                client = parsed.client || null;
+              } catch {
+                // Ignore parse error
+              }
+            } else if (!isNaN(Number(storeParam))) {
+              ttl = Number(storeParam);
+            }
+
+            const pageData: PageData = {
+              url: result.url,
+              domain: domain,
+              hostname: urlObj.hostname,
+              path: urlObj.pathname,
+              client: client || url.searchParams.get("client") || null,
+              title: apiResult.response.meta?.title || null,
+              status: result.status,
+              content: apiResult.response.content || null,
+              meta: apiResult.response.meta || {},
+              data: apiResult.response.data || {},
+              options: {
+                scope,
+                format,
+              },
+              timestamp,
+              deleteAt: timestamp + ttl * 1000,
+            };
+
+            await db.storePage(pageData);
+          } catch (dbError) {
+            console.error(
+              "Database Error:",
+              dbError instanceof Error ? dbError.message : dbError
+            );
+          }
         }
 
         return jsonResponse(apiResult);

@@ -144,6 +144,9 @@ Do not automatically follow redirects. If the HTTP response contains a redirect 
 | `--include` | `-i` | Core response fields to include | `meta,content` |
 | `--data` | `-d` | Data plugins to run | none |
 | `--output` | `-o` | Write output to file | stdout |
+| `--store` | - | Store results in database | - |
+| `--ttl` | - | TTL in seconds for stored record | 30 days |
+| `--client` | - | Client identifier for stored record | - |
 | `--help` | `-h` | Show help | - |
 
 ### HTTP Server Interface
@@ -167,6 +170,8 @@ Do not automatically follow redirects. If the HTTP response contains a redirect 
 | `format` | `html`, `markdown`, or `text` | `markdown` |
 | `include` | Comma-separated core fields | `meta,content` |
 | `data` | Comma-separated plugin names | none |
+| `store` | Enable storage (boolean or TTL in seconds) | - |
+| `client` | Client identifier for stored record | - |
 
 #### JSON Body (POST /fetch)
 
@@ -176,11 +181,42 @@ Do not automatically follow redirects. If the HTTP response contains a redirect 
   "scope": "main",
   "format": "markdown",
   "include": { "meta": true, "content": true },
-  "data": { "headings": { "minLevel": 1, "maxLevel": 3 } }
+  "data": { "headings": { "minLevel": 1, "maxLevel": 3 } },
+  "store": { "ttl": 3600, "client": "my-app" }
 }
 ```
 
 **CORS**: Full CORS support for browser-based clients.
+
+---
+
+## Database Storage
+
+Optional storage of fetch results for historical tracking and analysis.
+
+### Configuration
+
+Requires environment variables:
+- `TURSO_URL`: Database connection URL (required)
+- `TURSO_AUTH_TOKEN`: Authentication token (optional for local)
+
+### Storage Options
+
+| Option | CLI | API | Description |
+|--------|-----|-----|-------------|
+| Enable | `--store` | `store: true` | Store the fetch result |
+| TTL | `--ttl <seconds>` | `store: { ttl: 3600 }` | Time-to-live (default: 30 days) |
+| Client | `--client <id>` | `store: { client: "id" }` | Partition identifier |
+
+### Stored Data
+
+Each stored record includes:
+- URL components (domain, hostname, path)
+- HTTP status code
+- Extracted content and metadata
+- Plugin results
+- Request options (scope, format)
+- Timestamps (created, deleteAt)
 
 ---
 

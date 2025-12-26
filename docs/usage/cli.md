@@ -35,6 +35,9 @@ webcontent fetch https://example.com
 | `--include` | `-i` | Core response fields to include | `meta,content` |
 | `--data` | `-d` | Data plugins to run | none |
 | `--output` | `-o` | Write output to file | stdout |
+| `--store` | - | Store results in Turso database | `false` |
+| `--ttl` | - | Custom TTL in seconds when storing | 30 days |
+| `--client` | - | Client/Shard ID for stored record | none |
 | `--help` | `-h` | Show help message | - |
 
 ### Content Scope (`--scope`)
@@ -94,6 +97,15 @@ webcontent fetch https://example.com --data '{"headings":{"minLevel":1,"maxLevel
 ```bash
 webcontent fetch https://example.com --data headings,links
 ```
+
+### Database Storage
+Store the result in Turso database with a 1-hour TTL and custom client ID:
+```bash
+webcontent fetch https://example.com --store --ttl 3600 --client "my-app-1"
+```
+
+> [!NOTE]
+> Database storage requires `TURSO_URL` and optionally `TURSO_AUTH_TOKEN` environment variables to be set.
 
 ## Output Format
 

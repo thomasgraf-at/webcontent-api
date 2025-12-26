@@ -8,12 +8,14 @@
 | Language    | TypeScript       | Type safety, better DX                                |
 | HTML Parser | node-html-parser | Fast HTML parsing without DOM overhead                |
 | Markdown    | Turndown         | HTML to Markdown conversion                           |
+| Database    | Turso (libSQL)   | Optional storage of fetch results                     |
 
 ## Dependencies
 
 ```json
 {
   "dependencies": {
+    "@libsql/client": "^0.15.15",
     "node-html-parser": "^6.1.13",
     "turndown": "^7.2.0"
   },
@@ -32,17 +34,20 @@
 webcontent/
 ├── docs/
 │   ├── specs/
-│   │   ├── core.md                 # Product specification
+│   │   ├── core-specs.md           # Product specification
+│   │   ├── implementation-checklist.md
 │   │   └── documentation-style.md  # Doc guidelines
 │   ├── implementation/
-│   │   └── architecture.md         # This file
+│   │   ├── core-implementation.md  # This file
+│   │   └── database.md             # Database schema and service
 │   ├── usage/
 │   │   ├── cli.md                  # CLI usage guide
 │   │   ├── api.md                  # HTTP API reference
 │   │   └── deploy.md               # Deployment guide
 │   └── planning/
 │       ├── proposals.md            # Feature proposals
-│       └── plugins.md              # Plugin roadmap
+│       ├── plugins.md              # Plugin roadmap
+│       └── database.md             # Database future plans
 ├── src/
 │   ├── cli.ts                      # CLI entry point
 │   ├── commands/
@@ -53,7 +58,8 @@ webcontent/
 │   ├── services/
 │   │   ├── index.ts                # Service exports
 │   │   ├── web-fetcher.ts          # HTTP fetching
-│   │   └── html-parser.ts          # HTML parsing/conversion
+│   │   ├── html-parser.ts          # HTML parsing/conversion
+│   │   └── database.ts             # Database service
 │   └── plugins/
 │       ├── index.ts                # Plugin registry
 │       ├── types.ts                # Plugin interfaces
@@ -168,6 +174,12 @@ Plugins registered in `src/plugins/index.ts`. To add a plugin:
 1. **Validation (400)**: Invalid URL, scope, format, or unknown plugin
 2. **Fetch (500)**: Network failures, target server errors
 3. **Plugin (500)**: Plugin execution failures
+
+### Database Service
+
+See [database.md](database.md) for full schema and implementation details.
+
+`DatabaseService` in `database.ts` provides optional storage of fetch results via Turso/libSQL.
 
 ---
 
