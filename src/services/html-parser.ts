@@ -381,7 +381,7 @@ async function extractByFunction(
   url: string
 ): Promise<string> {
   const result = await runScopeFunction(scope.code, html, url, {
-    timeout: 5000,
+    timeout: scope.timeout ?? 5000,
   });
 
   if (!result.ok) {

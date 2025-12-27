@@ -39,3 +39,4 @@ export {
   type SandboxResult,
   type SandboxExecOptions,
 } from "./sandbox";
+export { DOMBridge, type SerializedNodeData } from "./dom-bridge";

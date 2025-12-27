@@ -81,22 +81,18 @@ Selector scope:
 }
 ```
 
-Function scope (sandboxed JavaScript):
+Handler function scope (sandboxed JavaScript):
 ```json
 {
   "scope": {
     "type": "function",
-    "code": "(doc, url) => doc.getText('h1')"
+    "code": "(api, url) => api.$('h1')?.text",
+    "timeout": 10000
   }
 }
 ```
 
-Function API:
-- `doc.html` - Raw HTML string
-- `doc.getText(sel)` - Get text from matching tags
-- `doc.getInnerHTML(sel)` - Get innerHTML of first match
-- `doc.getAllInnerHTML(sel)` - Get all matches' innerHTML as array
-- `doc.getAttribute(sel, attr)` - Get attribute value
+Handler functions use a jQuery-like API for DOM queries. See [Handler Functions Guide](handler-functions.md) for full documentation.
 
 **Include as Object**:
 ```json

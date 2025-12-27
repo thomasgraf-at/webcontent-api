@@ -21,6 +21,8 @@ export interface SelectorScope {
 export interface FunctionScope {
   type: "function";
   code: string;
+  /** Execution timeout in milliseconds (default: 5000, max: 60000) */
+  timeout?: number;
 }
 
 /**
@@ -169,7 +171,15 @@ export function validateScope(obj: unknown): Scope {
       if (typeof scope.code !== "string" || !scope.code.trim()) {
         throw new Error("Function scope requires non-empty 'code' string");
       }
-      return { type: "function", code: scope.code };
+      const result: FunctionScope = { type: "function", code: scope.code };
+      if (scope.timeout !== undefined) {
+        const timeout = Number(scope.timeout);
+        if (isNaN(timeout) || timeout < 1 || timeout > 60000) {
+          throw new Error("Function scope timeout must be between 1 and 60000 ms");
+        }
+        result.timeout = timeout;
+      }
+      return result;
     }
 
     case "handler": {

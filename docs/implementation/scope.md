@@ -57,29 +57,29 @@ Implementation in `extractBySelector()`:
 
 > **Note**: Elements are deduplicated, so overlapping selectors like `[".menu", "menu", "#menu"]` that match the same element will only include it once.
 
-## Function Scope
+## Function Scope (Handler Functions)
 
-Custom JavaScript extraction in sandboxed QuickJS/WASM environment.
+Custom JavaScript extraction using handler functions in a sandboxed QuickJS/WASM environment.
 
 ```json
 {
   "scope": {
     "type": "function",
-    "code": "(doc, url) => doc.getText('h1')"
+    "code": "(api, url) => api.$('h1')?.text",
+    "timeout": 10000
   }
 }
 ```
 
-### Sandbox API
+Handler functions receive an `api` object with jQuery-like DOM query capabilities. See [Handler APIs](handler-apis.md) for the full API specification and [Handler Functions Guide](../usage/handler-functions.md) for usage examples.
 
-The `doc` object provides:
-- `doc.html` - Raw HTML string
-- `doc.getText(selector)` - Get text from matching elements
-- `doc.getInnerHTML(selector)` - Get innerHTML of first match
-- `doc.getAllInnerHTML(selector)` - Get array of all matches' innerHTML
-- `doc.getAttribute(selector, attr)` - Get attribute value
+### Key Features
 
-Selector support: tag names (`h1`, `p`), classes (`.foo`), IDs (`#bar`)
+- `api.$()` / `api.$$()` - Query elements with full CSS selector support
+- `node.text` / `node.html` - Access content with block-aware text normalization
+- `node.$()` - Scoped queries within elements
+- `node.closest()` / `node.parent()` - DOM traversal
+- Configurable timeout (default 5s, max 60s)
 
 ### Security Restrictions
 
@@ -87,12 +87,12 @@ The QuickJS sandbox blocks:
 - Network access (`fetch` disabled)
 - File system access
 - Timers (setTimeout, setInterval - no-ops)
-- 5 second execution timeout
 
 ### Dependencies
 
 - `@sebastianwessel/quickjs` - QuickJS wrapper
 - `@jitl/quickjs-ng-wasmfile-release-sync` - QuickJS WASM binary
+- `linkedom` - Host-side HTML parsing
 
 ## Response Fields
 

@@ -2,6 +2,49 @@
 
 ## 2025-12-27
 
+### Handler Functions DOM API
+
+Replaced the limited regex-based function scope API with a full jQuery-like DOM API.
+
+**New API**:
+```javascript
+(api, url) => {
+  const article = api.$('article');
+  return {
+    title: article?.$('h1')?.text,
+    content: article?.$('.content')?.html,
+    links: article?.$$('a').map(a => ({ text: a.text, href: a.attr('href') }))
+  };
+}
+```
+
+**Features**:
+- `api.$()` / `api.$$()` - Query with full CSS selector support
+- `node.text` - Block-aware text extraction (preserves newlines from block elements)
+- `node.html` / `node.outerHtml` - HTML content access
+- `node.attr()` / `node.dataAttr()` - Attribute access
+- `node.$()` / `node.$$()` - Scoped child queries
+- `node.closest()` / `node.parent()` - DOM traversal
+- `node.children` / `node.firstChild` / `node.nextSibling` - Sibling/child navigation
+- Configurable timeout (default 5s, max 60s)
+
+**Architecture**:
+- Host-side HTML parsing with linkedom (full DOM compliance)
+- Serialized node data passed to QuickJS sandbox
+- Pre-cached query results for performance
+
+**New Files**:
+- `src/services/dom-bridge.ts` - Host-side DOM parsing and serialization
+
+**Dependencies Added**:
+- `linkedom` - Full DOM implementation for host-side parsing
+
+**Documentation**:
+- `docs/usage/handler-functions.md` - Usage guide with examples
+- `docs/implementation/handler-apis.md` - API specification for reuse
+
+---
+
 ### Response Structure Refactor
 
 Updated the API response envelope for clarity:
@@ -45,24 +88,18 @@ Added new content extraction scopes beyond `main` and `full`.
 
 CLI shorthand: `--scope 'selector:article,.content' --exclude '.ads,nav'`
 
-**Function Scope**:
+**Function Scope** (Handler Functions):
 ```json
 {
   "scope": {
     "type": "function",
-    "code": "(doc, url) => doc.getText('h1')"
+    "code": "(api, url) => api.$('h1')?.text",
+    "timeout": 10000
   }
 }
 ```
 
-Sandboxed execution with QuickJS/WASM. Available API:
-- `doc.html` - Raw HTML string
-- `doc.getText(sel)` - Get text from matching elements
-- `doc.getInnerHTML(sel)` - Get innerHTML of first match
-- `doc.getAllInnerHTML(sel)` - Get array of all matches
-- `doc.getAttribute(sel, attr)` - Get attribute value
-
-Security: No network, filesystem, or timer access.
+Sandboxed execution with QuickJS/WASM. See [Handler Functions DOM API](#handler-functions-dom-api) above for the current API.
 
 **Response Changes**:
 - Added `debug.scope` object containing:

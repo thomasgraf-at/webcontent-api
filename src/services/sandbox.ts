@@ -7,6 +7,7 @@
 import { loadQuickJs, type SandboxOptions } from "@sebastianwessel/quickjs";
 // @ts-ignore - wasm variant import
 import variant from "@jitl/quickjs-ng-wasmfile-release-sync";
+import { DOMBridge, type SerializedNodeData } from "./dom-bridge";
 
 /** Result of sandbox execution */
 export interface SandboxResult {
@@ -40,7 +41,6 @@ async function getQuickJs() {
  *
  * The code has access to:
  * - Standard JavaScript APIs (String, Array, Object, JSON, Math, RegExp, etc.)
- * - A `parseHTML` function for DOM parsing
  *
  * The code does NOT have access to:
  * - File system
@@ -100,27 +100,31 @@ function validateFunctionSyntax(code: string): string | null {
 
   // Must start with a function expression pattern
   const validPatterns = [
-    /^\(.*\)\s*=>/,  // Arrow function: (doc, url) => ...
-    /^function\s*\(/,  // Function expression: function(...) { ... }
-    /^\(\s*function/,  // IIFE-style: (function(...) { ... })
+    /^\(.*\)\s*=>/, // Arrow function: (api, url) => ...
+    /^function\s*\(/, // Function expression: function(...) { ... }
+    /^\(\s*function/, // IIFE-style: (function(...) { ... })
   ];
 
   const hasValidStart = validPatterns.some((p) => p.test(trimmed));
   if (!hasValidStart) {
-    return 'Function must be an arrow function "(doc, url) => ..." or function expression "function(doc, url) { ... }"';
+    return 'Function must be an arrow function "(api, url) => ..." or function expression "function(api, url) { ... }"';
   }
 
   // Check for obviously unsupported APIs that users might try
   const unsupportedApis = [
-    { pattern: /\.querySelector\s*\(/, suggestion: "Use doc.getInnerHTML(selector) or doc.getText(selector) instead" },
-    { pattern: /\.querySelectorAll\s*\(/, suggestion: "Use doc.getAllInnerHTML(selector) instead" },
-    { pattern: /\.getElementById\s*\(/, suggestion: 'Use doc.getInnerHTML("#id") instead' },
-    { pattern: /\.getElementsBy/, suggestion: "Use doc.getAllInnerHTML(selector) instead" },
-    { pattern: /document\./, suggestion: "Use the doc object methods: doc.getText(), doc.getInnerHTML(), etc." },
-    { pattern: /\.innerHTML(?!\()/, suggestion: "Use doc.getInnerHTML(selector) to get innerHTML" },
-    { pattern: /\.textContent/, suggestion: "Use doc.getText(selector) to get text content" },
-    { pattern: /\bfetch\s*\(/, suggestion: "Network access is not allowed in sandbox functions" },
-    { pattern: /\bawait\s+fetch/, suggestion: "Network access is not allowed in sandbox functions" },
+    {
+      pattern: /document\./,
+      suggestion:
+        "Use the api object methods: api.$(), api.$$(), etc.",
+    },
+    {
+      pattern: /\bfetch\s*\(/,
+      suggestion: "Network access is not allowed in sandbox functions",
+    },
+    {
+      pattern: /\bawait\s+fetch/,
+      suggestion: "Network access is not allowed in sandbox functions",
+    },
   ];
 
   for (const { pattern, suggestion } of unsupportedApis) {
@@ -135,10 +139,10 @@ function validateFunctionSyntax(code: string): string | null {
 /**
  * Execute a scope function against HTML content.
  *
- * The function receives a simplified DOM-like structure and the URL.
+ * The function receives a DOM-like API object and the URL.
  * It should return the extracted content as a string or object.
  *
- * @param functionCode - JavaScript function code, e.g., "(doc, url) => doc.getText('h1')"
+ * @param functionCode - JavaScript function code, e.g., "(api, url) => api.$('h1')?.text"
  * @param html - HTML content to parse
  * @param url - URL of the page (for context)
  * @param options - Execution options
@@ -156,92 +160,245 @@ export async function runScopeFunction(
     return { ok: false, error: validationError };
   }
 
-  // We need to provide a DOM-like API within the sandbox.
-  // Since QuickJS doesn't have native DOM, we'll parse the HTML on the host side
-  // and pass a serialized representation, or use a simple approach with string manipulation.
+  // Parse HTML on host side using linkedom
+  const bridge = new DOMBridge(html);
 
-  // For now, we'll use a simpler approach: pass the HTML as a string and let the
-  // function use regex or string methods. For full DOM support, we'd need linkedom
-  // inside the sandbox, which is complex.
+  // Pre-execute all queries by analyzing the function code
+  // and collecting results that will be needed
+  const queryResults = new Map<string, SerializedNodeData | null>();
+  const queryAllResults = new Map<string, SerializedNodeData[]>();
 
-  // Wrap the user's function in code that executes it
-  const wrappedCode = `
-// Simple HTML helper object (not a full DOM, but useful for basic extraction)
-const html = ${JSON.stringify(html)};
-const url = ${JSON.stringify(url)};
+  // Extract selectors from function code and pre-cache results
+  const selectors = extractSelectorsFromCode(functionCode);
+  for (const selector of selectors) {
+    queryResults.set(selector, bridge.querySelector(selector));
+    queryAllResults.set(selector, bridge.querySelectorAll(selector));
+  }
 
-// Simple querySelector-like helper using regex (limited but safe)
-const doc = {
-  html: html,
-  // Get text content between tags
-  getText(selector) {
-    // Very basic: extract text from matching tags
-    const tagMatch = selector.match(/^(\\w+)$/);
-    if (tagMatch) {
-      const tag = tagMatch[1];
-      const regex = new RegExp('<' + tag + '[^>]*>([\\\\s\\\\S]*?)</' + tag + '>', 'gi');
-      const matches = [];
-      let match;
-      while ((match = regex.exec(html)) !== null) {
-        matches.push(match[1].replace(/<[^>]+>/g, '').trim());
+  // Build the sandbox code with pre-cached query results and bridge functions
+  const wrappedCode = generateSandboxCode(
+    functionCode,
+    html,
+    url,
+    queryResults,
+    queryAllResults,
+    bridge
+  );
+
+  return runInSandbox(wrappedCode, options);
+}
+
+/**
+ * Extract CSS selectors from function code for pre-caching.
+ */
+function extractSelectorsFromCode(code: string): string[] {
+  const patterns = [
+    /\$\(\s*['"`]([^'"`]+)['"`]\s*\)/g,
+    /\$\$\(\s*['"`]([^'"`]+)['"`]\s*\)/g,
+    /querySelector\(\s*['"`]([^'"`]+)['"`]\s*\)/g,
+    /querySelectorAll\(\s*['"`]([^'"`]+)['"`]\s*\)/g,
+    /closest\(\s*['"`]([^'"`]+)['"`]\s*\)/g,
+  ];
+
+  const selectors = new Set<string>();
+  for (const pattern of patterns) {
+    let match;
+    while ((match = pattern.exec(code)) !== null) {
+      selectors.add(match[1]);
+    }
+  }
+  return Array.from(selectors);
+}
+
+/**
+ * Generate the sandbox code with the API and pre-cached results.
+ */
+function generateSandboxCode(
+  functionCode: string,
+  html: string,
+  url: string,
+  queryResults: Map<string, SerializedNodeData | null>,
+  queryAllResults: Map<string, SerializedNodeData[]>,
+  bridge: DOMBridge
+): string {
+  // Serialize the pre-cached results
+  const cachedQueries: Record<string, SerializedNodeData | null> = {};
+  const cachedQueryAlls: Record<string, SerializedNodeData[]> = {};
+
+  for (const [selector, result] of queryResults) {
+    cachedQueries[selector] = result;
+  }
+  for (const [selector, results] of queryAllResults) {
+    cachedQueryAlls[selector] = results;
+  }
+
+  // We need to handle dynamic queries (child queries, traversal)
+  // by serializing the bridge's node map and methods
+  // For simplicity, we'll inline all the bridge method results
+
+  // Collect all node IDs and their data for child queries
+  const allNodes: Record<number, SerializedNodeData> = {};
+  const collectNode = (node: SerializedNodeData | null) => {
+    if (node) allNodes[node._id] = node;
+  };
+  const collectNodes = (nodes: SerializedNodeData[]) => {
+    nodes.forEach(collectNode);
+  };
+
+  for (const result of queryResults.values()) {
+    collectNode(result);
+  }
+  for (const results of queryAllResults.values()) {
+    collectNodes(results);
+  }
+
+  // For child queries and traversal, we need to call back to the bridge
+  // Since QuickJS is synchronous, we pre-compute all possible child queries
+  // This is a simplified approach - we'll evaluate dynamically in the sandbox
+  // using a serialized representation
+
+  return `
+const __html = ${JSON.stringify(html)};
+const __url = ${JSON.stringify(url)};
+const __cachedQueries = ${JSON.stringify(cachedQueries)};
+const __cachedQueryAlls = ${JSON.stringify(cachedQueryAlls)};
+const __allNodes = ${JSON.stringify(allNodes)};
+
+// Bridge call results - populated dynamically
+const __childQueryCache = {};
+const __childQueryAllCache = {};
+const __closestCache = {};
+const __parentCache = {};
+const __childrenCache = {};
+const __firstChildCache = {};
+const __lastChildCache = {};
+const __nextSiblingCache = {};
+const __prevSiblingCache = {};
+
+// Inject bridge results for dynamic queries
+${generateBridgeResults(bridge, allNodes)}
+
+function createNode(data) {
+  if (!data) return null;
+
+  const node = {
+    _id: data._id,
+    tag: data.tag,
+    text: data.text,
+    html: data.html,
+    outerHtml: data.outerHtml,
+    attrs: data.attrs,
+    dataAttrs: data.dataAttrs,
+    classes: data.classes,
+
+    attr(name) {
+      return this.attrs[name] !== undefined ? this.attrs[name] : null;
+    },
+
+    dataAttr(name) {
+      return this.dataAttrs[name] !== undefined ? this.dataAttrs[name] : null;
+    },
+
+    hasClass(name) {
+      return this.classes.includes(name);
+    },
+
+    // Child queries
+    $(selector) {
+      const cacheKey = this._id + ':' + selector;
+      if (__childQueryCache[cacheKey] !== undefined) {
+        return createNode(__childQueryCache[cacheKey]);
       }
-      return matches.join('\\n');
-    }
-    return '';
-  },
-  // Get innerHTML of first matching element
-  getInnerHTML(selector) {
-    const tagMatch = selector.match(/^(\\w+)$/);
-    if (tagMatch) {
-      const tag = tagMatch[1];
-      const regex = new RegExp('<' + tag + '[^>]*>([\\\\s\\\\S]*?)</' + tag + '>', 'i');
-      const match = regex.exec(html);
-      return match ? match[1] : '';
-    }
-    // Handle class selector
-    const classMatch = selector.match(/^\\.(\\w+)$/);
-    if (classMatch) {
-      const cls = classMatch[1];
-      const regex = new RegExp('<[^>]+class="[^"]*\\\\b' + cls + '\\\\b[^"]*"[^>]*>([\\\\s\\\\S]*?)</[^>]+>', 'i');
-      const match = regex.exec(html);
-      return match ? match[1] : '';
-    }
-    // Handle ID selector
-    const idMatch = selector.match(/^#(\\w+)$/);
-    if (idMatch) {
-      const id = idMatch[1];
-      const regex = new RegExp('<[^>]+id="' + id + '"[^>]*>([\\\\s\\\\S]*?)</[^>]+>', 'i');
-      const match = regex.exec(html);
-      return match ? match[1] : '';
-    }
-    return '';
-  },
-  // Get all matching elements' innerHTML
-  getAllInnerHTML(selector) {
-    const tagMatch = selector.match(/^(\\w+)$/);
-    if (tagMatch) {
-      const tag = tagMatch[1];
-      const regex = new RegExp('<' + tag + '[^>]*>([\\\\s\\\\S]*?)</' + tag + '>', 'gi');
-      const matches = [];
-      let match;
-      while ((match = regex.exec(html)) !== null) {
-        matches.push(match[1]);
+      return null;
+    },
+
+    $$(selector) {
+      const cacheKey = this._id + ':' + selector;
+      if (__childQueryAllCache[cacheKey] !== undefined) {
+        return __childQueryAllCache[cacheKey].map(createNode);
       }
-      return matches;
+      return [];
+    },
+
+    querySelector(s) { return this.$(s); },
+    querySelectorAll(s) { return this.$$(s); },
+
+    // Traversal
+    closest(selector) {
+      const cacheKey = this._id + ':' + selector;
+      if (__closestCache[cacheKey] !== undefined) {
+        return createNode(__closestCache[cacheKey]);
+      }
+      return null;
+    },
+
+    parent(selector) {
+      const cacheKey = this._id + ':' + (selector || '');
+      if (__parentCache[cacheKey] !== undefined) {
+        return createNode(__parentCache[cacheKey]);
+      }
+      return null;
+    },
+
+    get children() {
+      if (__childrenCache[this._id] !== undefined) {
+        return __childrenCache[this._id].map(createNode);
+      }
+      return [];
+    },
+
+    get firstChild() {
+      if (__firstChildCache[this._id] !== undefined) {
+        return createNode(__firstChildCache[this._id]);
+      }
+      return null;
+    },
+
+    get lastChild() {
+      if (__lastChildCache[this._id] !== undefined) {
+        return createNode(__lastChildCache[this._id]);
+      }
+      return null;
+    },
+
+    get nextSibling() {
+      if (__nextSiblingCache[this._id] !== undefined) {
+        return createNode(__nextSiblingCache[this._id]);
+      }
+      return null;
+    },
+
+    get prevSibling() {
+      if (__prevSiblingCache[this._id] !== undefined) {
+        return createNode(__prevSiblingCache[this._id]);
+      }
+      return null;
+    },
+  };
+
+  return node;
+}
+
+const api = {
+  html: __html,
+  url: __url,
+
+  $(selector) {
+    if (__cachedQueries[selector] !== undefined) {
+      return createNode(__cachedQueries[selector]);
+    }
+    return null;
+  },
+
+  $$(selector) {
+    if (__cachedQueryAlls[selector] !== undefined) {
+      return __cachedQueryAlls[selector].map(createNode);
     }
     return [];
   },
-  // Get attribute value
-  getAttribute(selector, attr) {
-    const tagMatch = selector.match(/^(\\w+)$/);
-    if (tagMatch) {
-      const tag = tagMatch[1];
-      const regex = new RegExp('<' + tag + '[^>]*' + attr + '="([^"]*)"[^>]*>', 'i');
-      const match = regex.exec(html);
-      return match ? match[1] : null;
-    }
-    return null;
-  }
+
+  querySelector(s) { return this.$(s); },
+  querySelectorAll(s) { return this.$$(s); },
 };
 
 // Execute the user's function
@@ -253,17 +410,80 @@ try {
 }
 
 if (typeof scopeFn !== 'function') {
-  throw new Error('Code must be a function expression, e.g., "(doc, url) => doc.getText(\\'h1\\')"');
+  throw new Error('Code must be a function expression, e.g., "(api, url) => api.$(\\'h1\\')?.text"');
 }
 
 let result;
 try {
-  result = scopeFn(doc, url);
+  result = scopeFn(api, __url);
 } catch (execError) {
   throw new Error('Function execution error: ' + execError.message);
 }
 export default result;
 `;
+}
 
-  return runInSandbox(wrappedCode, options);
+/**
+ * Generate bridge results for dynamic queries (child queries, traversal).
+ * This pre-computes all possible queries for nodes that exist.
+ */
+function generateBridgeResults(
+  bridge: DOMBridge,
+  allNodes: Record<number, SerializedNodeData>
+): string {
+  const lines: string[] = [];
+
+  // For each node, pre-compute traversal results
+  for (const nodeId of Object.keys(allNodes).map(Number)) {
+    // Children
+    const children = bridge.children(nodeId);
+    if (children.length > 0) {
+      lines.push(`__childrenCache[${nodeId}] = ${JSON.stringify(children)};`);
+      // Also add children to allNodes for nested queries
+      children.forEach((child) => {
+        allNodes[child._id] = child;
+      });
+    }
+
+    // First/last child
+    const firstChild = bridge.firstChild(nodeId);
+    if (firstChild) {
+      lines.push(
+        `__firstChildCache[${nodeId}] = ${JSON.stringify(firstChild)};`
+      );
+      allNodes[firstChild._id] = firstChild;
+    }
+
+    const lastChild = bridge.lastChild(nodeId);
+    if (lastChild) {
+      lines.push(`__lastChildCache[${nodeId}] = ${JSON.stringify(lastChild)};`);
+      allNodes[lastChild._id] = lastChild;
+    }
+
+    // Siblings
+    const nextSibling = bridge.nextSibling(nodeId);
+    if (nextSibling) {
+      lines.push(
+        `__nextSiblingCache[${nodeId}] = ${JSON.stringify(nextSibling)};`
+      );
+      allNodes[nextSibling._id] = nextSibling;
+    }
+
+    const prevSibling = bridge.prevSibling(nodeId);
+    if (prevSibling) {
+      lines.push(
+        `__prevSiblingCache[${nodeId}] = ${JSON.stringify(prevSibling)};`
+      );
+      allNodes[prevSibling._id] = prevSibling;
+    }
+
+    // Parent (without selector)
+    const parent = bridge.parent(nodeId);
+    if (parent) {
+      lines.push(`__parentCache['${nodeId}:'] = ${JSON.stringify(parent)};`);
+      allNodes[parent._id] = parent;
+    }
+  }
+
+  return lines.join("\n");
 }
