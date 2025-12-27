@@ -2,9 +2,13 @@ import { parseArgs } from "util";
 import {
   WebFetcher,
   parseHtmlMeta,
-  extractContent,
+  extractWithScope,
   type ContentFormat,
   type PageMeta,
+  type Scope,
+  type ScopeResolution,
+  parseScopeArg,
+  scopeToString,
 } from "../services";
 import {
   parseDataParam,
@@ -17,11 +21,12 @@ import { parseTtl, DEFAULT_TTL, logRequest } from "../utils";
 
 interface FetchOptions {
   url: string;
-  scope: "full" | "main";
+  scope: Scope;
   format: ContentFormat;
   output?: string;
   include: ResponseFields;
   data: DataRequest | null;
+  debug: boolean;
   store: {
     enabled: boolean;
     ttl?: number;
@@ -37,7 +42,7 @@ interface ResponseFields {
 }
 
 interface ApiRequestOptions {
-  scope: "full" | "main";
+  scope: Scope;
   format: ContentFormat;
   data?: DataRequest;
   store?: {
@@ -51,7 +56,16 @@ interface ApiRequest {
   options: ApiRequestOptions;
 }
 
-interface ApiResponse {
+interface DebugInfo {
+  scope?: {
+    requested: Scope;
+    used: Scope;
+    resolved: boolean;
+    handlerId?: string;
+  };
+}
+
+interface ApiResult_Result {
   id?: string;
   timestamp: number;
   url: string;
@@ -64,9 +78,10 @@ interface ApiResponse {
   data?: DataResponse;
 }
 
-interface ApiResult {
+interface ApiOutput {
   request: ApiRequest;
-  response: ApiResponse;
+  result: ApiResult_Result;
+  debug?: DebugInfo;
 }
 
 function parseIncludeFields(include?: string): ResponseFields {
@@ -114,6 +129,10 @@ export async function fetchCommand(args: string[]): Promise<void> {
         short: "s",
         default: "main",
       },
+      exclude: {
+        type: "string",
+        short: "x",
+      },
       format: {
         type: "string",
         short: "f",
@@ -139,6 +158,9 @@ export async function fetchCommand(args: string[]): Promise<void> {
       },
       client: {
         type: "string",
+      },
+      debug: {
+        type: "boolean",
       },
       help: {
         type: "boolean",
@@ -166,9 +188,11 @@ export async function fetchCommand(args: string[]): Promise<void> {
     process.exit(1);
   }
 
-  const scope = (values.scope as "full" | "main") || "main";
-  if (scope !== "full" && scope !== "main") {
-    console.error('Error: Scope must be "full" or "main"');
+  let scope: Scope;
+  try {
+    scope = parseScopeArg(values.scope || "main", values.exclude);
+  } catch (error) {
+    console.error("Error:", error instanceof Error ? error.message : error);
     process.exit(1);
   }
 
@@ -196,6 +220,7 @@ export async function fetchCommand(args: string[]): Promise<void> {
     output: values.output,
     include: parseIncludeFields(values.include),
     data: dataRequest,
+    debug: !!values.debug,
     store: {
       enabled: storeEnabled,
       ttl: storeTtl,
@@ -226,9 +251,9 @@ async function executeFetch(options: FetchOptions): Promise<void> {
       options: apiRequestOptions,
     };
 
-    const apiResult: ApiResult = {
+    const apiOutput: ApiOutput = {
       request: apiRequest,
-      response: {
+      result: {
         timestamp: Date.now(),
         url: result.url,
         status: result.status,
@@ -236,30 +261,50 @@ async function executeFetch(options: FetchOptions): Promise<void> {
       },
     };
 
+    // Track scope resolution for debug and storage
+    let scopeResolution: ScopeResolution | undefined;
+
     // Include optional fields based on include settings
     if (options.include.headers) {
-      apiResult.response.headers = result.headers;
+      apiOutput.result.headers = result.headers;
     }
 
     if (options.include.body) {
-      apiResult.response.body = result.body;
+      apiOutput.result.body = result.body;
     }
 
     if (options.include.meta) {
-      apiResult.response.meta = parseHtmlMeta(result.body);
+      apiOutput.result.meta = parseHtmlMeta(result.body);
     }
 
     if (options.include.content) {
-      apiResult.response.content = extractContent(
+      const extraction = await extractWithScope(
         result.body,
-        options.scope === "main",
-        options.format
+        options.scope,
+        options.format,
+        result.url
       );
+      apiOutput.result.content = extraction.content;
+      scopeResolution = extraction.scopeResolution;
+    }
+
+    // Add debug info only if --debug flag is set
+    if (options.debug && scopeResolution) {
+      apiOutput.debug = {
+        scope: {
+          requested: options.scope,
+          used: scopeResolution.scopeUsed,
+          resolved: scopeResolution.scopeResolved,
+          ...(scopeResolution.handlerId && {
+            handlerId: scopeResolution.handlerId,
+          }),
+        },
+      };
     }
 
     // Run data plugins
     if (options.data) {
-      apiResult.response.data = await runPlugins(result.body, options.data);
+      apiOutput.result.data = await runPlugins(result.body, options.data);
     }
 
     // Database storage
@@ -288,13 +333,15 @@ async function executeFetch(options: FetchOptions): Promise<void> {
           hostname: urlObj.hostname,
           path: urlObj.pathname,
           client: options.store.client || null,
-          title: apiResult.response.meta?.title || null,
+          title: apiOutput.result.meta?.title || null,
           status: result.status,
-          content: apiResult.response.content || null,
-          meta: apiResult.response.meta || {},
-          data: apiResult.response.data || {},
+          content: apiOutput.result.content || null,
+          meta: apiOutput.result.meta || {},
+          data: apiOutput.result.data || {},
           options: {
             scope: options.scope,
+            scopeUsed: scopeResolution?.scopeUsed,
+            scopeResolved: scopeResolution?.scopeResolved,
             format: options.format,
           },
           timestamp,
@@ -302,7 +349,7 @@ async function executeFetch(options: FetchOptions): Promise<void> {
         };
 
         const storedPage = await db.storePage(pageData);
-        apiResult.response.id = storedPage.id;
+        apiOutput.result.id = storedPage.id;
         console.error(`Successfully stored page in database (ID: ${storedPage.id})`);
       } catch (dbError) {
         console.error(
@@ -315,14 +362,14 @@ async function executeFetch(options: FetchOptions): Promise<void> {
 
     // Log the request
     logRequest({
-      timestamp: apiResult.response.timestamp,
+      timestamp: apiOutput.result.timestamp,
       command: "fetch",
       url: result.url,
-      id: apiResult.response.id,
+      id: apiOutput.result.id,
       status: result.status,
     });
 
-    const outputText = JSON.stringify(apiResult, null, 2);
+    const outputText = JSON.stringify(apiOutput, null, 2);
 
     // Write to file or stdout
     if (options.output) {
@@ -345,7 +392,8 @@ Usage:
   webcontent fetch <url> [options]
 
 Options:
-  -s, --scope <type>      Content scope: full | main (default: main)
+  -s, --scope <type>      Content scope (default: main)
+  -x, --exclude <sel>     CSS selectors to exclude (for selector scope)
   -f, --format <fmt>      Output format: html | markdown | text (default: markdown)
   -i, --include <fields>  Core response fields to include (default: meta,content)
   -d, --data <plugins>    Data plugins to run
@@ -354,7 +402,31 @@ Options:
   --ttl <duration>        TTL for stored record (default: 30d)
                           Formats: 60, 60min, 6h, 10d, 3mo, 1y
   --client <name>         Client/shard identifier for the stored record
+  --debug                 Include debug info in response (scope resolution, etc.)
   -h, --help              Show this help message
+
+Scope Types:
+  main                    Extract main content using Readability (default)
+  full                    Full page body
+  auto                    Auto-detect based on site handlers
+  selector:<sel>          CSS selector(s), comma-separated
+  {...}                   JSON scope object (selector or function)
+
+  Selector scope examples:
+    selector:article
+    selector:article,.content
+    selector:#main --exclude .ads,.sidebar
+
+  Function scope (JSON):
+    {"type":"function","code":"(doc, url) => doc.getText('h1')"}
+
+  Function scope API:
+    doc.html            - Raw HTML string
+    doc.getText(sel)    - Get text from matching tags
+    doc.getInnerHTML(sel) - Get innerHTML of first match
+    doc.getAllInnerHTML(sel) - Get all matches' innerHTML
+    doc.getAttribute(sel, attr) - Get attribute value
+    Selectors: tag names (h1, p), classes (.foo), IDs (#bar)
 
 Include Fields:
   meta      Page metadata (title, description, opengraph, etc.)
@@ -370,6 +442,9 @@ Data Plugins:
 Examples:
   webcontent fetch https://example.com
   webcontent fetch https://example.com -s main -f markdown
+  webcontent fetch https://example.com -s auto
+  webcontent fetch https://example.com -s 'selector:article,.post'
+  webcontent fetch https://example.com -s 'selector:#content' -x '.ads,nav'
   webcontent fetch https://example.com -i "meta,content,headers"
   webcontent fetch https://example.com -d headings
   webcontent fetch https://example.com -d '{"headings":{"minLevel":2}}'

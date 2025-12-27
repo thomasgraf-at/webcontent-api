@@ -1,5 +1,7 @@
 # Scope Options
 
+> **Status**: ✅ Implemented - See [implementation docs](../implementation/scope.md)
+
 Extended content extraction scopes beyond `main` and `full`.
 
 ## Current Scopes
@@ -65,7 +67,7 @@ type ScopeFunction = (doc: Document, url: string) => string | object;
 - `url`: The page URL (for context)
 - Returns: HTML string or structured object
 
-**Security**: Custom functions are executed in a sandboxed QuickJS environment via WebAssembly. See [site-rules.md](./site-rules.md#sandboxing) for details on:
+**Security**: Custom functions are executed in a sandboxed QuickJS environment via WebAssembly. See [site-handlers.md](./site-handlers.md#sandboxing) for details on:
 - QuickJS/WASM isolation
 - Available APIs (DOM parsing, string manipulation, JSON, regex)
 - Restrictions (no filesystem, network, timers, global state)
@@ -86,9 +88,9 @@ Automatically select the best extraction method.
 ```
 
 **Resolution order**:
-1. Check site rules database for hostname match
-2. If rule found with custom scope → use it
-3. If no rule → fall back to `main`
+1. Check site handlers database for hostname match (see [site-handlers.md](./site-handlers.md))
+2. If handler found with custom scope → use it
+3. If no handler → fall back to `main`
 
 ---
 
@@ -109,8 +111,8 @@ type Scope =
       code: string;
     }
   | {
-      type: "rule";
-      name: string;  // Reference to site rule
+      type: "handler";
+      id: string; // reference to site handlers database
     };
 ```
 
@@ -164,4 +166,4 @@ function extractBySelector(
 
 ### Function Scope
 
-Uses isolated VM or QuickJS for sandboxing. See [Site Rules](#site-rules-database).
+Uses isolated VM or QuickJS for sandboxing. See [site-handlers.md](./site-handlers.md#sandboxing).

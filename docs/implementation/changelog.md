@@ -2,6 +2,85 @@
 
 ## 2025-12-27
 
+### Response Structure Refactor
+
+Updated the API response envelope for clarity:
+
+**Changes**:
+- Renamed `response` to `result` in the response envelope
+- Moved `debug` to top level (sibling of `request` and `result`)
+- Debug info is now opt-in via `--debug` flag (CLI) or `debug=true` (API)
+
+**Before**:
+```json
+{ "request": {...}, "response": { "content": "...", "scopeUsed": "main" } }
+```
+
+**After**:
+```json
+{ "request": {...}, "result": { "content": "..." }, "debug": { "scope": {...} } }
+```
+
+---
+
+### Extended Scope Options
+
+Added new content extraction scopes beyond `main` and `full`.
+
+**New Scope Types**:
+- `auto` - Auto-detect based on site handlers (falls back to `main`)
+- `selector` - CSS selector-based extraction with include/exclude
+- `function` - Custom JavaScript extraction in QuickJS sandbox
+
+**Selector Scope**:
+```json
+{
+  "scope": {
+    "type": "selector",
+    "include": ["article", ".content"],
+    "exclude": [".ads", "nav"]
+  }
+}
+```
+
+CLI shorthand: `--scope 'selector:article,.content' --exclude '.ads,nav'`
+
+**Function Scope**:
+```json
+{
+  "scope": {
+    "type": "function",
+    "code": "(doc, url) => doc.getText('h1')"
+  }
+}
+```
+
+Sandboxed execution with QuickJS/WASM. Available API:
+- `doc.html` - Raw HTML string
+- `doc.getText(sel)` - Get text from matching elements
+- `doc.getInnerHTML(sel)` - Get innerHTML of first match
+- `doc.getAllInnerHTML(sel)` - Get array of all matches
+- `doc.getAttribute(sel, attr)` - Get attribute value
+
+Security: No network, filesystem, or timer access.
+
+**Response Changes**:
+- Added `debug.scope` object containing:
+  - `requested` - The scope originally requested
+  - `used` - The actual scope applied
+  - `resolved` - Whether `auto` was resolved
+  - `handlerId` - Site handler ID if matched (optional)
+
+**Dependencies Added**:
+- `@sebastianwessel/quickjs` - QuickJS sandbox wrapper
+- `@jitl/quickjs-ng-wasmfile-release-sync` - QuickJS WASM binary
+
+**New Files**:
+- `src/services/scope.ts` - Scope type definitions and utilities
+- `src/services/sandbox.ts` - QuickJS sandbox service
+
+---
+
 ### Page IDs
 
 Added unique identifiers for stored pages using nanoid.

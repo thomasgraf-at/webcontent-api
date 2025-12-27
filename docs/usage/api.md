@@ -10,15 +10,22 @@ Fetch content using query parameters.
 
 **Parameters**:
 
-| Parameter | Description                               | Default        |
-|-----------|-------------------------------------------|----------------|
-| `url`     | URL to fetch (required)                   | -              |
-| `scope`   | `full` or `main`                          | `main`         |
-| `format`  | `html`, `markdown`, or `text`             | `markdown`     |
-| `include` | Comma-separated core fields               | `meta,content` |
-| `data`    | Comma-separated plugin names              | none           |
-| `store`   | Boolean or TTL duration to enable storage | `false`        |
-| `client`  | Client/Shard identifier for the record    | none           |
+| Parameter | Description                                       | Default        |
+|-----------|---------------------------------------------------|----------------|
+| `url`     | URL to fetch (required)                           | -              |
+| `scope`   | Content scope (see below)                         | `main`         |
+| `format`  | `html`, `markdown`, or `text`                     | `markdown`     |
+| `include` | Comma-separated core fields                       | `meta,content` |
+| `data`    | Comma-separated plugin names                      | none           |
+| `debug`   | Set to `true` to include debug info               | `false`        |
+| `store`   | Boolean or TTL duration to enable storage         | `false`        |
+| `client`  | Client/Shard identifier for the record            | none           |
+
+**Scope Options**:
+- `main` - Extract main content using Readability-like algorithm
+- `full` - Full page body
+- `auto` - Auto-detect based on site handlers
+- JSON object for selector/function scope (must be URL-encoded)
 
 **Example**:
 ```bash
@@ -44,12 +51,52 @@ Fetch content using a JSON body. This is preferred for complex requests or when 
 {
   "url": "https://example.com",
   "include": "meta,content",
+  "debug": true,
   "options": {
     "scope": "main",
     "format": "markdown"
   }
 }
 ```
+
+The `debug` field can be at the top level or inside `options`.
+
+**Scope Options**:
+
+Simple scopes:
+```json
+{ "scope": "main" }
+{ "scope": "full" }
+{ "scope": "auto" }
+```
+
+Selector scope:
+```json
+{
+  "scope": {
+    "type": "selector",
+    "include": ["article", ".content"],
+    "exclude": [".ads", "nav"]
+  }
+}
+```
+
+Function scope (sandboxed JavaScript):
+```json
+{
+  "scope": {
+    "type": "function",
+    "code": "(doc, url) => doc.getText('h1')"
+  }
+}
+```
+
+Function API:
+- `doc.html` - Raw HTML string
+- `doc.getText(sel)` - Get text from matching tags
+- `doc.getInnerHTML(sel)` - Get innerHTML of first match
+- `doc.getAllInnerHTML(sel)` - Get all matches' innerHTML as array
+- `doc.getAttribute(sel, attr)` - Get attribute value
 
 **Include as Object**:
 ```json
@@ -270,7 +317,7 @@ All responses use a standard envelope format:
       }
     }
   },
-  "response": {
+  "result": {
     "id": "V1StGXR8_Z5j",
     "timestamp": 1700000000000,
     "url": "https://example.com",
@@ -284,13 +331,22 @@ All responses use a standard envelope format:
         { "level": 2, "text": "Section" }
       ]
     }
+  },
+  "debug": {
+    "scope": {
+      "requested": "main",
+      "used": "main",
+      "resolved": false
+    }
   }
 }
 ```
 
-### Core Response Fields
+> **Note**: The `debug` field is only included when `debug=true` is requested.
 
-**Always returned**:
+### Core Result Fields
+
+**Always returned** (in `result`):
 - `timestamp`: Unix timestamp in milliseconds.
 - `url`: The final URL fetched.
 - `status`: HTTP status code from the target server.
@@ -307,6 +363,14 @@ All responses use a standard envelope format:
 
 **Controlled by `data`**:
 - `data`: Object containing output from requested data plugins.
+
+### Debug Info
+
+When `debug=true` is requested, the response includes a top-level `debug` object:
+- `debug.scope.requested`: The scope originally requested.
+- `debug.scope.used`: The actual scope that was applied (may differ for `auto`).
+- `debug.scope.resolved`: Boolean indicating whether the scope was auto-resolved.
+- `debug.scope.handlerId`: Site handler ID if a handler was matched (for `auto` scope).
 
 ---
 

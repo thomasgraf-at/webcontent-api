@@ -1,10 +1,13 @@
 import {
   WebFetcher,
   parseHtmlMeta,
-  extractContent,
+  extractWithScope,
+  FunctionScopeError,
   type ContentFormat,
   type PageMeta,
   type StoredPage,
+  type Scope,
+  validateScope,
 } from "../services";
 import {
   parseDataParam,
@@ -25,7 +28,7 @@ interface ResponseFields {
 }
 
 interface ApiRequestOptions {
-  scope: "full" | "main";
+  scope: Scope;
   format: ContentFormat;
   data?: DataRequest;
   store?: {
@@ -39,7 +42,16 @@ interface ApiRequest {
   options: ApiRequestOptions;
 }
 
-interface ApiResponse {
+interface DebugInfo {
+  scope?: {
+    requested: Scope;
+    used: Scope;
+    resolved: boolean;
+    handlerId?: string;
+  };
+}
+
+interface ApiResult_Result {
   id?: string;
   timestamp: number;
   url: string;
@@ -53,15 +65,17 @@ interface ApiResponse {
   cached?: boolean;
 }
 
-interface ApiResult {
+interface ApiOutput {
   request: ApiRequest;
-  response: ApiResponse;
+  result: ApiResult_Result;
+  debug?: DebugInfo;
 }
 
 interface FetchRequestOptions {
-  scope?: "full" | "main";
+  scope?: Scope;
   format?: ContentFormat;
   data?: string | DataRequest;
+  debug?: boolean;
   store?: boolean | { ttl?: string | number; client?: string };
 }
 
@@ -69,6 +83,7 @@ interface FetchRequest {
   url: string;
   options?: FetchRequestOptions;
   include?: string | ResponseFields;
+  debug?: boolean;
 }
 
 interface StoreRequest {
@@ -355,14 +370,20 @@ const server = Bun.serve({
         }
 
         const opts = body.options || {};
-        const scope = opts.scope || "main";
         const format = opts.format || "markdown";
         const dataParam = opts.data;
         const storeParam = opts.store;
+        const debugEnabled = body.debug || opts.debug || false;
         const includeFields = parseIncludeFields(body.include);
 
-        if (scope !== "full" && scope !== "main") {
-          return jsonResponse({ error: 'Scope must be "full" or "main"' }, 400);
+        let scope: Scope;
+        try {
+          scope = opts.scope ? validateScope(opts.scope) : "main";
+        } catch (error) {
+          return jsonResponse(
+            { error: error instanceof Error ? error.message : "Invalid scope" },
+            400
+          );
         }
 
         if (!["html", "markdown", "text"].includes(format)) {
@@ -392,9 +413,9 @@ const server = Bun.serve({
           options: apiRequestOptions,
         };
 
-        const apiResult: ApiResult = {
+        const apiOutput: ApiOutput = {
           request: apiRequest,
-          response: {
+          result: {
             timestamp: Date.now(),
             url: result.url,
             status: result.status,
@@ -402,20 +423,39 @@ const server = Bun.serve({
           },
         };
 
+        // Track scope resolution for debug and storage
+        let scopeResolution: { scopeUsed: Scope; scopeResolved: boolean; handlerId?: string } | undefined;
+
         if (includeFields.headers) {
-          apiResult.response.headers = result.headers;
+          apiOutput.result.headers = result.headers;
         }
         if (includeFields.body) {
-          apiResult.response.body = result.body;
+          apiOutput.result.body = result.body;
         }
         if (includeFields.meta) {
-          apiResult.response.meta = parseHtmlMeta(result.body);
+          apiOutput.result.meta = parseHtmlMeta(result.body);
         }
         if (includeFields.content) {
-          apiResult.response.content = extractContent(result.body, scope === "main", format);
+          const extraction = await extractWithScope(result.body, scope, format, result.url);
+          apiOutput.result.content = extraction.content;
+          scopeResolution = extraction.scopeResolution;
         }
         if (dataRequest) {
-          apiResult.response.data = await runPlugins(result.body, dataRequest);
+          apiOutput.result.data = await runPlugins(result.body, dataRequest);
+        }
+
+        // Add debug info only if debug flag is set
+        if (debugEnabled && scopeResolution) {
+          apiOutput.debug = {
+            scope: {
+              requested: scope,
+              used: scopeResolution.scopeUsed,
+              resolved: scopeResolution.scopeResolved,
+              ...(scopeResolution.handlerId && {
+                handlerId: scopeResolution.handlerId,
+              }),
+            },
+          };
         }
 
         // Database storage
@@ -444,13 +484,15 @@ const server = Bun.serve({
               hostname: urlObj.hostname,
               path: urlObj.pathname,
               client: storeOptions.client || null,
-              title: apiResult.response.meta?.title || null,
+              title: apiOutput.result.meta?.title || null,
               status: result.status,
-              content: apiResult.response.content || null,
-              meta: apiResult.response.meta || {},
-              data: apiResult.response.data || {},
+              content: apiOutput.result.content || null,
+              meta: apiOutput.result.meta || {},
+              data: apiOutput.result.data || {},
               options: {
                 scope,
+                scopeUsed: scopeResolution?.scopeUsed,
+                scopeResolved: scopeResolution?.scopeResolved,
                 format,
               },
               timestamp,
@@ -458,7 +500,7 @@ const server = Bun.serve({
             };
 
             const storedPage = await db.storePage(pageData);
-            apiResult.response.id = storedPage.id;
+            apiOutput.result.id = storedPage.id;
           } catch (dbError) {
             console.error(
               "Database Error:",
@@ -468,15 +510,19 @@ const server = Bun.serve({
         }
 
         logServerRequest({
-          timestamp: apiResult.response.timestamp,
+          timestamp: apiOutput.result.timestamp,
           command: "POST /fetch",
           url: result.url,
-          id: apiResult.response.id,
+          id: apiOutput.result.id,
           status: result.status,
         });
 
-        return jsonResponse(apiResult);
+        return jsonResponse(apiOutput);
       } catch (error) {
+        // Return 400 for user errors (invalid function scope)
+        if (error instanceof FunctionScopeError) {
+          return jsonResponse({ error: error.message }, 400);
+        }
         console.error("Error:", error);
         return jsonResponse(
           { error: error instanceof Error ? error.message : "Internal server error" },
@@ -569,14 +615,26 @@ const server = Bun.serve({
         return jsonResponse({ error: "URL must start with http:// or https://" }, 400);
       }
 
-      const scope = (url.searchParams.get("scope") || "main") as "full" | "main";
+      const scopeParam = url.searchParams.get("scope") || "main";
       const format = (url.searchParams.get("format") || "markdown") as ContentFormat;
       const includeParam = url.searchParams.get("include") || undefined;
       const includeFields = parseIncludeFields(includeParam);
       const dataParam = url.searchParams.get("data") || undefined;
+      const debugEnabled = url.searchParams.get("debug") === "true";
 
-      if (scope !== "full" && scope !== "main") {
-        return jsonResponse({ error: 'Scope must be "full" or "main"' }, 400);
+      let scope: Scope;
+      try {
+        // For GET requests, scope param can be simple string or JSON
+        if (scopeParam.startsWith("{")) {
+          scope = validateScope(JSON.parse(scopeParam));
+        } else {
+          scope = validateScope(scopeParam);
+        }
+      } catch (error) {
+        return jsonResponse(
+          { error: error instanceof Error ? error.message : "Invalid scope" },
+          400
+        );
       }
 
       if (!["html", "markdown", "text"].includes(format)) {
@@ -607,9 +665,9 @@ const server = Bun.serve({
           options: apiRequestOptions,
         };
 
-        const apiResult: ApiResult = {
+        const apiOutput: ApiOutput = {
           request: apiRequest,
-          response: {
+          result: {
             timestamp: Date.now(),
             url: result.url,
             status: result.status,
@@ -617,20 +675,39 @@ const server = Bun.serve({
           },
         };
 
+        // Track scope resolution for debug and storage
+        let scopeResolution: { scopeUsed: Scope; scopeResolved: boolean; handlerId?: string } | undefined;
+
         if (includeFields.headers) {
-          apiResult.response.headers = result.headers;
+          apiOutput.result.headers = result.headers;
         }
         if (includeFields.body) {
-          apiResult.response.body = result.body;
+          apiOutput.result.body = result.body;
         }
         if (includeFields.meta) {
-          apiResult.response.meta = parseHtmlMeta(result.body);
+          apiOutput.result.meta = parseHtmlMeta(result.body);
         }
         if (includeFields.content) {
-          apiResult.response.content = extractContent(result.body, scope === "main", format);
+          const extraction = await extractWithScope(result.body, scope, format, result.url);
+          apiOutput.result.content = extraction.content;
+          scopeResolution = extraction.scopeResolution;
         }
         if (dataRequest) {
-          apiResult.response.data = await runPlugins(result.body, dataRequest);
+          apiOutput.result.data = await runPlugins(result.body, dataRequest);
+        }
+
+        // Add debug info only if debug flag is set
+        if (debugEnabled && scopeResolution) {
+          apiOutput.debug = {
+            scope: {
+              requested: scope,
+              used: scopeResolution.scopeUsed,
+              resolved: scopeResolution.scopeResolved,
+              ...(scopeResolution.handlerId && {
+                handlerId: scopeResolution.handlerId,
+              }),
+            },
+          };
         }
 
         // Database storage (GET /fetch usually defaults to no store unless specified)
@@ -672,13 +749,15 @@ const server = Bun.serve({
               hostname: urlObj.hostname,
               path: urlObj.pathname,
               client: client,
-              title: apiResult.response.meta?.title || null,
+              title: apiOutput.result.meta?.title || null,
               status: result.status,
-              content: apiResult.response.content || null,
-              meta: apiResult.response.meta || {},
-              data: apiResult.response.data || {},
+              content: apiOutput.result.content || null,
+              meta: apiOutput.result.meta || {},
+              data: apiOutput.result.data || {},
               options: {
                 scope,
+                scopeUsed: scopeResolution?.scopeUsed,
+                scopeResolved: scopeResolution?.scopeResolved,
                 format,
               },
               timestamp,
@@ -686,7 +765,7 @@ const server = Bun.serve({
             };
 
             const storedPage = await db.storePage(pageData);
-            apiResult.response.id = storedPage.id;
+            apiOutput.result.id = storedPage.id;
           } catch (dbError) {
             console.error(
               "Database Error:",
@@ -696,15 +775,19 @@ const server = Bun.serve({
         }
 
         logServerRequest({
-          timestamp: apiResult.response.timestamp,
+          timestamp: apiOutput.result.timestamp,
           command: "GET /fetch",
           url: result.url,
-          id: apiResult.response.id,
+          id: apiOutput.result.id,
           status: result.status,
         });
 
-        return jsonResponse(apiResult);
+        return jsonResponse(apiOutput);
       } catch (error) {
+        // Return 400 for user errors (invalid function scope)
+        if (error instanceof FunctionScopeError) {
+          return jsonResponse({ error: error.message }, 400);
+        }
         console.error("Error:", error);
         return jsonResponse(
           { error: error instanceof Error ? error.message : "Internal server error" },

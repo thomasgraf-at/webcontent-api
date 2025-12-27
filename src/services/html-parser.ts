@@ -1,5 +1,14 @@
 import { parse, HTMLElement } from "node-html-parser";
 import TurndownService from "turndown";
+import {
+  type Scope,
+  type ScopeResolution,
+  type SelectorScope,
+  type FunctionScope,
+  isSelectorScope,
+  isFunctionScope,
+} from "./scope";
+import { runScopeFunction } from "./sandbox";
 
 export type ContentFormat = "html" | "markdown" | "text";
 
@@ -217,4 +226,191 @@ function cleanText(text: string): string {
     .replace(/\s+/g, " ")
     .replace(/\n\s*\n/g, "\n\n")
     .trim();
+}
+
+/**
+ * Result of extraction with scope
+ */
+export interface ExtractionResult {
+  content: string;
+  scopeResolution: ScopeResolution;
+}
+
+/**
+ * Extract content using selector-based scope.
+ * Finds all elements matching include selectors, removes elements matching exclude selectors.
+ */
+export function extractBySelector(
+  html: string,
+  scope: SelectorScope,
+  format: ContentFormat
+): string {
+  const root = parse(html);
+
+  // Always remove these elements first
+  const alwaysRemove = ["script", "style", "noscript", "iframe", "svg"];
+  alwaysRemove.forEach((tag) => {
+    root.querySelectorAll(tag).forEach((el) => el.remove());
+  });
+
+  // Remove images with data: URIs
+  root.querySelectorAll("img").forEach((img) => {
+    const src = img.getAttribute("src");
+    if (src?.startsWith("data:")) {
+      img.remove();
+    }
+  });
+
+  // Find all elements matching include selectors (deduplicated)
+  const elementSet = new Set<HTMLElement>();
+  for (const selector of scope.include) {
+    const matches = root.querySelectorAll(selector);
+    matches.forEach((el) => elementSet.add(el));
+  }
+  const elements = Array.from(elementSet);
+
+  // Remove excluded elements from each matched element
+  if (scope.exclude && scope.exclude.length > 0) {
+    for (const el of elements) {
+      for (const excludeSelector of scope.exclude) {
+        el.querySelectorAll(excludeSelector).forEach((e) => e.remove());
+      }
+    }
+  }
+
+  // Combine content from all matched elements
+  const combinedHtml = elements.map((el) => el.innerHTML).join("\n");
+
+  switch (format) {
+    case "html":
+      return combinedHtml;
+    case "markdown":
+      return convertToMarkdown(combinedHtml);
+    case "text":
+      return cleanText(elements.map((el) => el.textContent || "").join("\n"));
+  }
+}
+
+/**
+ * Extract content using a scope configuration.
+ * This is the main entry point for scope-based extraction.
+ */
+export async function extractWithScope(
+  html: string,
+  scope: Scope,
+  format: ContentFormat,
+  url?: string
+): Promise<ExtractionResult> {
+  // Handle "auto" scope - for now falls back to "main"
+  // TODO: Integrate with site handlers database when available
+  if (scope === "auto") {
+    const content = extractContent(html, true, format);
+    return {
+      content,
+      scopeResolution: {
+        scopeUsed: "main",
+        scopeResolved: true,
+      },
+    };
+  }
+
+  // Handle simple string scopes
+  if (scope === "main" || scope === "full") {
+    const content = extractContent(html, scope === "main", format);
+    return {
+      content,
+      scopeResolution: {
+        scopeUsed: scope,
+        scopeResolved: false,
+      },
+    };
+  }
+
+  // Handle selector scope
+  if (isSelectorScope(scope)) {
+    const content = extractBySelector(html, scope, format);
+    return {
+      content,
+      scopeResolution: {
+        scopeUsed: scope,
+        scopeResolved: false,
+      },
+    };
+  }
+
+  // Handle function scope
+  if (isFunctionScope(scope)) {
+    const content = await extractByFunction(html, scope, format, url || "");
+    return {
+      content,
+      scopeResolution: {
+        scopeUsed: scope,
+        scopeResolved: false,
+      },
+    };
+  }
+
+  // Handle handler scope
+  if (scope.type === "handler") {
+    // TODO: Integrate with site handlers database
+    throw new Error(
+      `Handler scope "${scope.id}" not yet implemented. Site handlers database required.`
+    );
+  }
+
+  // Should never reach here if types are correct
+  throw new Error(`Unknown scope type`);
+}
+
+/** Custom error class for function scope validation/execution errors */
+export class FunctionScopeError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "FunctionScopeError";
+  }
+}
+
+/**
+ * Extract content using a custom JavaScript function.
+ * The function runs in a sandboxed QuickJS environment.
+ */
+async function extractByFunction(
+  html: string,
+  scope: FunctionScope,
+  format: ContentFormat,
+  url: string
+): Promise<string> {
+  const result = await runScopeFunction(scope.code, html, url, {
+    timeout: 5000,
+  });
+
+  if (!result.ok) {
+    throw new FunctionScopeError(result.error || "Function execution failed");
+  }
+
+  // Convert the result to the requested format
+  let content: string;
+
+  if (typeof result.data === "string") {
+    content = result.data;
+  } else if (typeof result.data === "object" && result.data !== null) {
+    // If the function returned an object, stringify it for JSON-like output
+    content = JSON.stringify(result.data, null, 2);
+  } else {
+    content = String(result.data ?? "");
+  }
+
+  // If the content looks like HTML and format is markdown/text, convert it
+  if (content.includes("<") && content.includes(">")) {
+    switch (format) {
+      case "html":
+        return content;
+      case "markdown":
+        return convertToMarkdown(content);
+      case "text":
+        return cleanText(content.replace(/<[^>]+>/g, " "));
+    }
+  }
+
+  return content;
 }

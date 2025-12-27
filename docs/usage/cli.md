@@ -30,7 +30,8 @@ webcontent fetch https://example.com
 
 | Option | Short | Description | Default |
 |--------|-------|-------------|---------|
-| `--scope` | `-s` | Content scope: `full` or `main` | `main` |
+| `--scope` | `-s` | Content extraction scope (see below) | `main` |
+| `--exclude` | `-x` | CSS selectors to exclude (for selector scope) | none |
 | `--format` | `-f` | Output format: `html`, `markdown`, or `text` | `markdown` |
 | `--include` | `-i` | Core response fields to include | `meta,content` |
 | `--data` | `-d` | Data plugins to run | none |
@@ -38,11 +39,47 @@ webcontent fetch https://example.com
 | `--store` | - | Store results in Turso database | `false` |
 | `--ttl` | - | TTL for stored record (duration format) | `30d` |
 | `--client` | - | Client/Shard ID for stored record | none |
+| `--debug` | - | Include debug info in response | `false` |
 | `--help` | `-h` | Show help message | - |
 
 ### Content Scope (`--scope`)
-- `main` (default): Extracts only the primary content (articles, main text). Removes noise like navigation and footers.
-- `full`: Extracts the entire page body.
+
+**Simple Scopes:**
+- `main` (default): Extracts primary content using Readability-like algorithm
+- `full`: Extracts the entire page body
+- `auto`: Auto-detect based on site handlers (falls back to `main`)
+
+**Selector Scope:**
+
+Extract content matching CSS selectors:
+```bash
+# Single selector
+webcontent fetch https://example.com -s 'selector:article'
+
+# Multiple selectors (comma-separated)
+webcontent fetch https://example.com -s 'selector:article,.content'
+
+# With exclusions
+webcontent fetch https://example.com -s 'selector:#main' -x '.ads,nav'
+```
+
+**Function Scope:**
+
+Custom JavaScript extraction in a sandboxed environment:
+```bash
+webcontent fetch https://example.com -s '{"type":"function","code":"(doc, url) => doc.getText(\"h1\")"}'
+```
+
+Function API:
+- `doc.html` - Raw HTML string
+- `doc.getText(sel)` - Get text from matching tags
+- `doc.getInnerHTML(sel)` - Get innerHTML of first match
+- `doc.getAllInnerHTML(sel)` - Get all matches' innerHTML as array
+- `doc.getAttribute(sel, attr)` - Get attribute value
+
+Selectors support: tag names (`h1`, `p`), classes (`.foo`), IDs (`#bar`)
+
+Functions can return strings or objects (objects are JSON-stringified).
 
 ### Output Format (`--format`)
 - `markdown` (default): Converted to clean Markdown. Ideal for reading and LLM processing.
@@ -76,6 +113,18 @@ webcontent fetch https://example.com -o result.json
 ### Extract Full HTML
 ```bash
 webcontent fetch https://example.com --scope full --format html -o page.html
+```
+
+### Selector Scope
+```bash
+# Extract article content, excluding ads
+webcontent fetch https://blog.example.com -s 'selector:article' -x '.ads,.sidebar'
+```
+
+### Function Scope
+```bash
+# Extract structured data
+webcontent fetch https://example.com -s '{"type":"function","code":"(doc, url) => ({ title: doc.getText(\"h1\"), url: url })"}'
 ```
 
 ### Include Raw Headers
@@ -226,7 +275,7 @@ webcontent gets --ids V1StGXR8_Z5j,abc123def456 -o pages.json
 
 ## Output Format
 
-All output is JSON with a request/response envelope.
+All output is JSON with a request/result envelope.
 
 ### Fetch Response
 
@@ -240,7 +289,7 @@ All output is JSON with a request/response envelope.
       "data": { "headings": true }
     }
   },
-  "response": {
+  "result": {
     "id": "V1StGXR8_Z5j",
     "timestamp": 1700000000000,
     "url": "https://example.com",
@@ -253,12 +302,20 @@ All output is JSON with a request/response envelope.
         { "level": 1, "text": "Title" }
       ]
     }
+  },
+  "debug": {
+    "scope": {
+      "requested": "main",
+      "used": "main",
+      "resolved": false
+    }
   }
 }
 ```
 
 > [!NOTE]
-> The `id` field is only present when `--store` is used.
+> - The `id` field is only present when `--store` is used.
+> - The `debug` field is only present when `--debug` is used.
 
 ### Store Response
 

@@ -234,6 +234,9 @@
       <select id="scope">
         <option value="main" selected>main (extract main content)</option>
         <option value="full">full (entire page body)</option>
+        <option value="auto">auto (detect from site handlers)</option>
+        <option value="selector">selector (CSS selectors)</option>
+        <option value="function">function (custom JavaScript)</option>
       </select>
     </div>
 
@@ -245,6 +248,23 @@
         <option value="text">Plain Text</option>
       </select>
     </div>
+  </div>
+
+  <div id="selectorOptions" class="form-row" style="display: none;">
+    <div class="form-group flex-grow">
+      <label for="selectorInclude">Include Selectors:</label>
+      <input type="text" id="selectorInclude" placeholder="article, .content, #main">
+    </div>
+    <div class="form-group flex-grow">
+      <label for="selectorExclude">Exclude Selectors:</label>
+      <input type="text" id="selectorExclude" placeholder=".ads, nav, .sidebar">
+    </div>
+  </div>
+
+  <div id="functionOptions" class="form-group" style="display: none;">
+    <label for="functionCode">Function Code:</label>
+    <input type="text" id="functionCode" placeholder="(doc, url) => doc.getText('h1')" value="(doc, url) => doc.getText('h1')">
+    <small style="color: #666;">API: doc.html, doc.getText(sel), doc.getInnerHTML(sel), doc.getAllInnerHTML(sel), doc.getAttribute(sel, attr)</small>
   </div>
 
   <div class="form-group">
@@ -267,8 +287,9 @@
   </div>
 
   <div class="form-group">
-    <label>Database Storage:</label>
+    <label>Options:</label>
     <div class="checkbox-group">
+      <label><input type="checkbox" id="debugEnabled"> Debug info</label>
       <label><input type="checkbox" id="storeEnabled"> Store in DB</label>
     </div>
     <div id="storeOptions" class="form-row" style="margin-top: 10px; display: none;">
@@ -294,6 +315,7 @@
       <button class="tab" data-tab="overview">Overview</button>
       <button class="tab" data-tab="meta">Metadata</button>
       <button class="tab" data-tab="data">Data Plugins</button>
+      <button class="tab" data-tab="debug">Debug</button>
       <button class="tab" data-tab="raw">Raw JSON</button>
     </div>
 
@@ -301,6 +323,7 @@
     <div id="overview" class="tab-content"></div>
     <div id="meta" class="tab-content"></div>
     <div id="data" class="tab-content"></div>
+    <div id="debug" class="tab-content"></div>
     <div id="raw" class="tab-content"></div>
   </div>
 
@@ -309,10 +332,57 @@
       return document.getElementById('server').value;
     }
 
+    // Scope options toggle
+    document.getElementById('scope').addEventListener('change', (e) => {
+      const scope = e.target.value;
+      document.getElementById('selectorOptions').style.display = scope === 'selector' ? 'flex' : 'none';
+      document.getElementById('functionOptions').style.display = scope === 'function' ? 'block' : 'none';
+    });
+
     // Store options toggle
     document.getElementById('storeEnabled').addEventListener('change', (e) => {
       document.getElementById('storeOptions').style.display = e.target.checked ? 'flex' : 'none';
     });
+
+    function getScopeValue() {
+      const scopeType = document.getElementById('scope').value;
+
+      if (scopeType === 'main' || scopeType === 'full' || scopeType === 'auto') {
+        return scopeType;
+      }
+
+      if (scopeType === 'selector') {
+        const includeStr = document.getElementById('selectorInclude').value.trim();
+        const excludeStr = document.getElementById('selectorExclude').value.trim();
+
+        if (!includeStr) {
+          alert('Please enter at least one include selector');
+          return null;
+        }
+
+        const scope = {
+          type: 'selector',
+          include: includeStr.split(',').map(s => s.trim()).filter(Boolean)
+        };
+
+        if (excludeStr) {
+          scope.exclude = excludeStr.split(',').map(s => s.trim()).filter(Boolean);
+        }
+
+        return scope;
+      }
+
+      if (scopeType === 'function') {
+        const code = document.getElementById('functionCode').value.trim();
+        if (!code) {
+          alert('Please enter function code');
+          return null;
+        }
+        return { type: 'function', code };
+      }
+
+      return scopeType;
+    }
 
     // Tab handling
     document.querySelectorAll('.tab').forEach(tab => {
@@ -351,16 +421,17 @@
       const resultDiv = document.getElementById('result');
       resultDiv.style.display = 'block';
 
-      const response = apiResult.response;
+      const result = apiResult.result;
       const request = apiResult.request;
+      const debug = apiResult.debug;
 
       // Success banner
-      const statusClass = response.status >= 200 && response.status < 400 ? 'success' : 'error';
+      const statusClass = result.status >= 200 && result.status < 400 ? 'success' : 'error';
       document.getElementById('resultBanner').innerHTML = `
         <div class="success-banner">
-          Fetched successfully: <strong>${response.url}</strong>
-          <span class="status-code ${statusClass}">${response.status}</span>
-          ${response.redirect ? `<br>Redirects to: ${response.redirect}` : ''}
+          Fetched successfully: <strong>${result.url}</strong>
+          <span class="status-code ${statusClass}">${result.status}</span>
+          ${result.redirect ? `<br>Redirects to: ${result.redirect}` : ''}
         </div>
       `;
 
@@ -368,34 +439,38 @@
       const format = request.options.format;
       document.getElementById('content').innerHTML = `
         <h3>Content (${format})</h3>
-        <div class="content-preview">${escapeHtml(response.content || '(not included or empty)')}</div>
+        <div class="content-preview">${escapeHtml(result.content || '(not included or empty)')}</div>
       `;
 
       // Overview
+      const scopeDisplay = typeof request.options.scope === 'object'
+        ? JSON.stringify(request.options.scope)
+        : request.options.scope;
+
       document.getElementById('overview').innerHTML = `
         <h3>Fetch Result</h3>
         <table class="meta-table">
           <tr><th>Request URL</th><td>${request.url}</td></tr>
-          <tr><th>Response URL</th><td>${response.url}</td></tr>
-          <tr><th>Status</th><td><span class="status-code ${statusClass}">${response.status}</span></td></tr>
-          <tr><th>Redirect</th><td>${response.redirect || 'None'}</td></tr>
-          <tr><th>Timestamp</th><td>${new Date(response.timestamp).toISOString()}</td></tr>
-          <tr><th>Scope</th><td>${request.options.scope}</td></tr>
+          <tr><th>Response URL</th><td>${result.url}</td></tr>
+          <tr><th>Status</th><td><span class="status-code ${statusClass}">${result.status}</span></td></tr>
+          <tr><th>Redirect</th><td>${result.redirect || 'None'}</td></tr>
+          <tr><th>Timestamp</th><td>${new Date(result.timestamp).toISOString()}</td></tr>
+          <tr><th>Scope</th><td>${escapeHtml(String(scopeDisplay))}</td></tr>
           <tr><th>Format</th><td>${request.options.format}</td></tr>
-          <tr><th>Title</th><td>${response.meta?.title || 'N/A'}</td></tr>
-          <tr><th>Content Length</th><td>${(response.content || '').length.toLocaleString()} characters</td></tr>
+          <tr><th>Title</th><td>${result.meta?.title || 'N/A'}</td></tr>
+          <tr><th>Content Length</th><td>${(result.content || '').length.toLocaleString()} characters</td></tr>
         </table>
-        ${response.headers ? `
+        ${result.headers ? `
           <h4>Response Headers</h4>
           <table class="meta-table">
-            ${Object.entries(response.headers).map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join('')}
+            ${Object.entries(result.headers).map(([k, v]) => `<tr><th>${escapeHtml(k)}</th><td>${escapeHtml(v)}</td></tr>`).join('')}
           </table>
         ` : ''}
       `;
 
       // Metadata
-      const meta = response.meta || {};
-      document.getElementById('meta').innerHTML = response.meta ? `
+      const meta = result.meta || {};
+      document.getElementById('meta').innerHTML = result.meta ? `
         <h3>Page Metadata</h3>
         <table class="meta-table">
           <tr><th>Title</th><td>${meta.title || 'N/A'}</td></tr>
@@ -424,19 +499,29 @@
       ` : '<p>Metadata not included in response.</p>';
 
       // Data plugins
-      if (response.data && Object.keys(response.data).length > 0) {
+      if (result.data && Object.keys(result.data).length > 0) {
         let dataHtml = '<h3>Data Plugin Results</h3>';
-        for (const [plugin, data] of Object.entries(response.data)) {
+        for (const [plugin, pluginData] of Object.entries(result.data)) {
           dataHtml += `
             <div class="data-section">
               <h4>${escapeHtml(plugin)}</h4>
-              <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+              <pre>${escapeHtml(JSON.stringify(pluginData, null, 2))}</pre>
             </div>
           `;
         }
         document.getElementById('data').innerHTML = dataHtml;
       } else {
         document.getElementById('data').innerHTML = '<p>No data plugins requested or no data returned.</p>';
+      }
+
+      // Debug
+      if (debug) {
+        document.getElementById('debug').innerHTML = `
+          <h3>Debug Info</h3>
+          <pre>${escapeHtml(JSON.stringify(debug, null, 2))}</pre>
+        `;
+      } else {
+        document.getElementById('debug').innerHTML = '<p>Debug info not enabled. Check the "Debug info" option to include debug data.</p>';
       }
 
       // Raw JSON
@@ -470,6 +555,7 @@
       document.getElementById('overview').innerHTML = errorContent;
       document.getElementById('meta').innerHTML = '';
       document.getElementById('data').innerHTML = '';
+      document.getElementById('debug').innerHTML = '';
       document.getElementById('raw').innerHTML = details ? `<pre>${escapeHtml(typeof details === 'object' ? JSON.stringify(details, null, 2) : String(details))}</pre>` : '';
 
       showTab('content');
@@ -483,7 +569,9 @@
 
     async function fetchContent(method) {
       const url = document.getElementById('url').value;
-      const scope = document.getElementById('scope').value;
+      const scope = getScopeValue();
+      if (scope === null) return; // Validation failed
+
       const format = document.getElementById('format').value;
       const include = getIncludeFields();
       const data = getDataPlugins();
@@ -494,14 +582,18 @@
 
       try {
         let response;
+        const debugEnabled = document.getElementById('debugEnabled').checked;
         const storeEnabled = document.getElementById('storeEnabled').checked;
         const storeTtl = document.getElementById('storeTtl').value;
         const storeClient = document.getElementById('storeClient').value;
 
         const apiBase = getApiBase();
         if (method === 'GET') {
-          const params = new URLSearchParams({ url, scope, format, include });
+          // For GET, encode scope as JSON string if it's an object
+          const scopeParam = typeof scope === 'string' ? scope : JSON.stringify(scope);
+          const params = new URLSearchParams({ url, scope: scopeParam, format, include });
           if (data) params.set('data', data);
+          if (debugEnabled) params.set('debug', 'true');
           if (storeEnabled) {
             params.set('store', storeTtl || 'true');
             if (storeClient) params.set('client', storeClient);
@@ -511,6 +603,7 @@
           const body = {
             url,
             include,
+            debug: debugEnabled,
             options: {
               scope,
               format
