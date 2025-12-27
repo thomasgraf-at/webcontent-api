@@ -1,6 +1,6 @@
 /**
  * Scope types for content extraction.
- * See docs/planning/scope.md for detailed specification.
+ * See docs/implementation/scope.md for detailed specification.
  */
 
 /**

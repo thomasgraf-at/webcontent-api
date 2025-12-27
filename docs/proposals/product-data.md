@@ -707,5 +707,5 @@ webcontent fetch https://example.com/product/widget --data product --currency EU
 ## Related
 
 - [plugins.md](./plugins.md) - Product as a data plugin
-- [site-rules.md](./site-rules.md) - Custom product extraction rules per site
+- [site-handlers.md](./site-handlers.md) - Custom product extraction handlers per site
 - [enrichment.md](./enrichment.md) - Combine with company/pricing APIs

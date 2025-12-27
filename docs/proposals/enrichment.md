@@ -787,4 +787,4 @@ Enrichment data should be cached separately from page content:
 ## Related
 
 - [plugins.md](./plugins.md) - Plugin system for data extraction
-- [site-rules.md](./site-rules.md) - Site-specific rules can use enrichment data
+- [site-handlers.md](./site-handlers.md) - Site-specific handlers can use enrichment data

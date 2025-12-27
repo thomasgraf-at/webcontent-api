@@ -1,5 +1,7 @@
 # WebContent Specifications
 
+> **Important**: Specs are hard requirements that must be fulfilled. Any change that contradicts these specs requires explicit approval before proceeding.
+
 ## Product Overview
 
 WebContent is a web content fetching API that provides both CLI and HTTP server interfaces for extracting content from web pages.
@@ -228,7 +230,7 @@ Each stored record includes:
 
 ### Plugin Expansion
 
-See [plugins.md](../planning/plugins.md) for the full plugin roadmap including:
+See [plugins.md](../proposals/plugins.md) for the full plugin roadmap including:
 - `links`, `images`, `words`, `tables`
 - `seo`, `schema`, `feeds`
 - AI-powered: `summary`, `entities`, `sentiment`

@@ -6,8 +6,10 @@
 |-------------|------------------|-------------------------------------------------------|
 | Runtime     | Bun              | Native TypeScript, fast execution, binary compilation |
 | Language    | TypeScript       | Type safety, better DX                                |
-| HTML Parser | node-html-parser | Fast HTML parsing without DOM overhead                |
+| HTML Parser | node-html-parser | Fast HTML parsing for extraction pipeline             |
+| DOM Library | linkedom         | Full DOM compliance for handler functions             |
 | Markdown    | Turndown         | HTML to Markdown conversion                           |
+| Sandbox     | QuickJS (WASM)   | Secure JavaScript execution for handler functions    |
 | Database    | Turso (libSQL)   | Optional storage of fetch results                     |
 
 ## Dependencies
@@ -15,13 +17,13 @@
 ```json
 {
   "dependencies": {
-    "@libsql/client": "^0.15.15",
-    "node-html-parser": "^6.1.13",
-    "turndown": "^7.2.0"
-  },
-  "devDependencies": {
-    "@types/bun": "latest",
-    "typescript": "^5.7.2"
+    "@jitl/quickjs-ng-wasmfile-release-sync": "QuickJS WASM binary",
+    "@libsql/client": "Turso database client",
+    "@sebastianwessel/quickjs": "QuickJS wrapper for sandbox",
+    "linkedom": "DOM implementation for handler functions",
+    "nanoid": "ID generation for stored pages",
+    "node-html-parser": "Fast HTML parsing",
+    "turndown": "HTML to Markdown conversion"
   }
 }
 ```
@@ -33,39 +35,53 @@
 ```
 webcontent/
 ├── docs/
-│   ├── specs/
-│   │   ├── core-specs.md           # Product specification
+│   ├── specs/                      # Hard requirements (binding)
+│   │   ├── project-specs.md        # Product specification
 │   │   ├── implementation-checklist.md
-│   │   └── documentation-style.md  # Doc guidelines
-│   ├── implementation/
-│   │   ├── core-implementation.md  # This file
-│   │   └── database.md             # Database schema and service
-│   ├── usage/
+│   │   └── documentation-style.md
+│   ├── implementation/             # Technical details
+│   │   ├── changelog.md            # Feature changelog
+│   │   ├── core.md                 # This file
+│   │   ├── database.md             # Database schema and service
+│   │   ├── scope.md                # Scope types and resolution
+│   │   └── handler-apis.md         # Handler function API spec
+│   ├── usage/                      # End-user guides
 │   │   ├── cli.md                  # CLI usage guide
 │   │   ├── api.md                  # HTTP API reference
+│   │   ├── handler-functions.md    # Handler function guide
 │   │   └── deploy.md               # Deployment guide
-│   └── planning/
-│       ├── proposals.md            # Feature proposals
-│       ├── plugins.md              # Plugin roadmap
-│       └── database.md             # Database future plans
+│   └── proposals/                  # Future plans (not binding)
+│       ├── base.md                 # Roadmap
+│       ├── command-*.md            # Command proposals
+│       ├── plugin-*.md             # Plugin proposals
+│       └── misc.md                 # Low-priority ideas
 ├── src/
 │   ├── cli.ts                      # CLI entry point
 │   ├── commands/
 │   │   ├── index.ts                # Command exports
-│   │   └── fetch.ts                # Fetch command
+│   │   ├── fetch.ts                # Fetch command
+│   │   ├── get.ts                  # Get command (by ID)
+│   │   └── store.ts                # Store command
 │   ├── server/
 │   │   └── index.ts                # HTTP server
 │   ├── services/
 │   │   ├── index.ts                # Service exports
 │   │   ├── web-fetcher.ts          # HTTP fetching
 │   │   ├── html-parser.ts          # HTML parsing/conversion
+│   │   ├── scope.ts                # Scope types and validation
+│   │   ├── sandbox.ts              # QuickJS sandbox service
+│   │   ├── dom-bridge.ts           # DOM bridge for sandbox
 │   │   └── database.ts             # Database service
-│   └── plugins/
-│       ├── index.ts                # Plugin registry
-│       ├── types.ts                # Plugin interfaces
-│       └── headings.ts             # Headings plugin
-├── test.html                       # Browser test page
-├── Dockerfile                      # Docker build config
+│   ├── plugins/
+│   │   ├── index.ts                # Plugin registry
+│   │   ├── types.ts                # Plugin interfaces
+│   │   └── headings.ts             # Headings plugin
+│   └── utils/
+│       ├── index.ts                # Utility exports
+│       ├── logger.ts               # Request logging
+│       └── ttl.ts                  # TTL parsing utilities
+├── tests/                          # Browser test pages
+├── Dockerfile
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -182,7 +198,7 @@ Plugins registered in `src/plugins/index.ts`. To add a plugin:
 1. Create file in `src/plugins/`
 2. Implement `DataPlugin` interface
 3. Register in `index.ts`
-4. Document in `docs/planning/plugins.md`
+4. Document in `docs/implementation/plugins.md`
 
 ### Error Handling
 
